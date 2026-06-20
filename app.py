@@ -19,6 +19,7 @@ st.sidebar.header("1. Cargar bases")
 remesa_file = st.sidebar.file_uploader("Remesa (Cartera Asignada)", type=["csv", "xlsx", "xls"])
 pagos_file = st.sidebar.file_uploader("Pagos", type=["csv", "xlsx", "xls"])
 vicidial_file = st.sidebar.file_uploader("Vicidial", type=["csv", "xlsx", "xls"])
+sms_file = st.sidebar.file_uploader("SMS", type=["csv", "xlsx", "xls"])
 reminder_file = st.sidebar.file_uploader("Reminder / IVR", type=["csv", "xlsx", "xls"])
 
 if not remesa_file:
@@ -28,6 +29,7 @@ if not remesa_file:
 remesa = read_any(remesa_file)
 pagos = read_any(pagos_file) if pagos_file else None
 vicidial = read_any(vicidial_file) if vicidial_file else None
+sms = read_any(sms_file) if sms_file else None
 reminder = read_any(reminder_file) if reminder_file else None
 
 # ---------------------------------------------------------------------------
@@ -71,6 +73,17 @@ if vicidial is not None:
             key="v_contact_statuses",
         )
 
+s_codigo = s_estado = None
+if sms is not None:
+    with st.sidebar.expander("SMS", expanded=False):
+        s_codigo = col_select("Código de cliente", sms, ["codigo_de_cliente", "codigo_cliente"], "s_codigo")
+        s_estado = col_select("Estado de envío", sms, ["estado", "status", "resultado"], "s_estado")
+        s_entregado_statuses = st.multiselect(
+            "Status considerados 'entregado/contacto'",
+            sorted(sms[s_estado].dropna().unique().tolist()) if s_estado != "(ninguna)" else [],
+            key="s_entregado_statuses",
+        )
+
 rm_codigo = rm_estado = rm_duracion = None
 if reminder is not None:
     with st.sidebar.expander("Reminder / IVR", expanded=False):
@@ -98,6 +111,8 @@ if vicidial is not None:
     v_codigo, v_status, v_status_name, v_ejecutivo, v_fecha = (
         col_or_none(x) for x in (v_codigo, v_status, v_status_name, v_ejecutivo, v_fecha)
     )
+if sms is not None:
+    s_codigo, s_estado = (col_or_none(x) for x in (s_codigo, s_estado))
 if reminder is not None:
     rm_codigo, rm_estado, rm_duracion = (col_or_none(x) for x in (rm_codigo, rm_estado, rm_duracion))
 
@@ -133,6 +148,15 @@ if vicidial is not None and v_codigo:
         .rename(columns={v_codigo: r_codigo, "size": "llamadas_vicidial"})
     )
 
+gestion_sms_por_cliente = pd.DataFrame(columns=[r_codigo, "sms_enviados"])
+if sms is not None and s_codigo:
+    sms = sms.copy()
+    sms[s_codigo] = sms[s_codigo].astype(str).str.strip()
+    gestion_sms_por_cliente = (
+        sms.groupby(s_codigo, as_index=False).size()
+        .rename(columns={s_codigo: r_codigo, "size": "sms_enviados"})
+    )
+
 gestion_reminder_por_cliente = pd.DataFrame(columns=[r_codigo, "envios_reminder"])
 if reminder is not None and rm_codigo:
     reminder = reminder.copy()
@@ -144,9 +168,11 @@ if reminder is not None and rm_codigo:
 
 base = remesa.merge(recupero_por_cliente, on=r_codigo, how="left")
 base = base.merge(gestion_vicidial_por_cliente, on=r_codigo, how="left")
+base = base.merge(gestion_sms_por_cliente, on=r_codigo, how="left")
 base = base.merge(gestion_reminder_por_cliente, on=r_codigo, how="left")
 base["monto_recuperado"] = base.get("monto_recuperado", 0).fillna(0)
 base["llamadas_vicidial"] = base.get("llamadas_vicidial", 0).fillna(0)
+base["sms_enviados"] = base.get("sms_enviados", 0).fillna(0)
 base["envios_reminder"] = base.get("envios_reminder", 0).fillna(0)
 
 # ---------------------------------------------------------------------------
@@ -161,6 +187,7 @@ tabs = st.tabs(
         "Gestión Telefónica",
         "Gestión Automática",
         "Oportunidades",
+        "Efectividad por Canal",
         "Línea Base / Exportar",
     ]
 )
@@ -344,23 +371,104 @@ with tabs[6]:
         perf["pct_contactabilidad"] = pct(perf["contactos"], perf["llamadas"])
         st.dataframe(perf.sort_values("pct_contactabilidad", ascending=False).head(10), use_container_width=True)
 
-    if vicidial is not None and reminder is not None:
-        st.markdown("**Canales con mayor efectividad**")
+    canales_disponibles = []
+    if vicidial is not None:
         canal_v = pct(
             vicidial[v_status_name].isin(st.session_state.get("v_contact_statuses", [])).sum() if v_status_name else 0,
             len(vicidial),
         )
+        canales_disponibles.append({"Canal": "Vicidial", "% Contactabilidad": canal_v})
+    if sms is not None:
+        canal_s = pct(
+            sms[s_estado].isin(st.session_state.get("s_entregado_statuses", [])).sum() if s_estado else 0,
+            len(sms),
+        )
+        canales_disponibles.append({"Canal": "SMS", "% Contactabilidad": canal_s})
+    if reminder is not None:
         canal_r = pct(
             reminder[rm_estado].isin(st.session_state.get("rm_contestada_statuses", [])).sum() if rm_estado else 0,
             len(reminder),
         )
+        canales_disponibles.append({"Canal": "Reminder/IVR", "% Contactabilidad": canal_r})
+    if canales_disponibles:
+        st.markdown("**Canales con mayor efectividad**")
         st.dataframe(
-            pd.DataFrame({"Canal": ["Vicidial", "Reminder/IVR"], "% Contactabilidad": [canal_v, canal_r]}),
+            pd.DataFrame(canales_disponibles).sort_values("% Contactabilidad", ascending=False),
             use_container_width=True,
         )
 
-# --- Línea base / Exportar -----------------------------------------------
+# --- Efectividad por Canal -----------------------------------------------
 with tabs[7]:
+    st.subheader("Efectividad por Canal (Llamadas, SMS, Reminder)")
+
+    canal_rows = []
+    if vicidial is not None:
+        contactos_v = (
+            vicidial[v_status_name].isin(st.session_state.get("v_contact_statuses", [])).sum()
+            if v_status_name
+            else 0
+        )
+        canal_rows.append({
+            "Canal": "Llamadas (Vicidial)",
+            "Gestiones/Envíos": len(vicidial),
+            "Cuentas alcanzadas": vicidial[v_codigo].nunique() if v_codigo else None,
+            "Contactos efectivos": contactos_v,
+            "% Efectividad": pct(contactos_v, len(vicidial)),
+        })
+    if sms is not None:
+        entregados_s = (
+            sms[s_estado].isin(st.session_state.get("s_entregado_statuses", [])).sum()
+            if s_estado
+            else 0
+        )
+        canal_rows.append({
+            "Canal": "SMS",
+            "Gestiones/Envíos": len(sms),
+            "Cuentas alcanzadas": sms[s_codigo].nunique() if s_codigo else None,
+            "Contactos efectivos": entregados_s,
+            "% Efectividad": pct(entregados_s, len(sms)),
+        })
+    if reminder is not None:
+        contestadas_r = (
+            reminder[rm_estado].isin(st.session_state.get("rm_contestada_statuses", [])).sum()
+            if rm_estado
+            else 0
+        )
+        canal_rows.append({
+            "Canal": "Reminder / IVR",
+            "Gestiones/Envíos": len(reminder),
+            "Cuentas alcanzadas": reminder[rm_codigo].nunique() if rm_codigo else None,
+            "Contactos efectivos": contestadas_r,
+            "% Efectividad": pct(contestadas_r, len(reminder)),
+        })
+
+    if canal_rows:
+        canal_df = pd.DataFrame(canal_rows)
+        st.dataframe(canal_df, use_container_width=True)
+        st.plotly_chart(
+            px.bar(canal_df, x="Canal", y="% Efectividad", text="% Efectividad", title="% Efectividad por canal"),
+            use_container_width=True,
+        )
+
+        st.markdown("**Recuperación asociada a cuentas gestionadas por canal**")
+        rec_rows = []
+        for canal_col, label in [("llamadas_vicidial", "Llamadas (Vicidial)"), ("sms_enviados", "SMS"), ("envios_reminder", "Reminder / IVR")]:
+            if canal_col in base.columns and base[canal_col].sum() > 0:
+                gestionados = base[base[canal_col] > 0]
+                rec_rows.append({
+                    "Canal": label,
+                    "Cuentas gestionadas": len(gestionados),
+                    "Saldo asignado": gestionados[r_saldo].sum() if r_saldo else None,
+                    "Monto recuperado": gestionados["monto_recuperado"].sum(),
+                    "% Recuperación": pct(gestionados["monto_recuperado"].sum(), gestionados[r_saldo].sum() if r_saldo else 0),
+                })
+        if rec_rows:
+            st.dataframe(pd.DataFrame(rec_rows), use_container_width=True)
+    else:
+        st.info("Sube al menos una base de Vicidial, SMS o Reminder/IVR para comparar canales.")
+
+# --- Línea base / Exportar -----------------------------------------------
+with tabs[8]:
     st.subheader("Línea Base de Indicadores")
     st.caption("Indicadores a comparar durante las próximas 4 semanas del plan de acción.")
     resumen = {
@@ -375,6 +483,12 @@ with tabs[7]:
         if v_status_name:
             resumen["% Contactabilidad Vicidial"] = pct(
                 vicidial[v_status_name].isin(st.session_state.get("v_contact_statuses", [])).sum(), len(vicidial)
+            )
+    if sms is not None:
+        resumen["SMS enviados"] = len(sms)
+        if s_estado:
+            resumen["% Efectividad SMS"] = pct(
+                sms[s_estado].isin(st.session_state.get("s_entregado_statuses", [])).sum(), len(sms)
             )
     if reminder is not None:
         resumen["Registros Reminder"] = len(reminder)
