@@ -279,7 +279,11 @@ with tabs[2]:
         )
         t_show = t[["Temporalidad", "Número de cuentas", "Saldo asignado", "% Participación"]]
         st.dataframe(t_show, use_container_width=True, column_config=money_config(t_show))
-        st.plotly_chart(px.bar(t, x="Temporalidad", y="Saldo asignado", text="% Participación"), use_container_width=True)
+        t_chart = t.copy()
+        t_chart["Etiqueta"] = t_chart["% Participación"].map(lambda v: f"{v:.2f}%")
+        st.plotly_chart(
+            px.bar(t_chart, x="Temporalidad", y="Saldo asignado", text="Etiqueta"), use_container_width=True
+        )
     else:
         st.warning("Mapea la columna de aging de morosidad en Remesa.")
 
