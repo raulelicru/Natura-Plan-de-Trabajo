@@ -237,9 +237,11 @@ with tabs[0]:
     c4.metric("% Recuperación", f"{pct(total_recuperado, total_saldo):.1f}%")
 
     if r_estado_residencia:
+        top_estados = dist_table(base, r_estado_residencia, r_saldo).sort_values("saldo", ascending=False).head(15)
         fig = px.bar(
-            dist_table(base, r_estado_residencia, r_saldo), x=r_estado_residencia, y="saldo", title="Saldo asignado por estado"
+            top_estados, x=r_estado_residencia, y="saldo", title="Saldo asignado por estado (top 15)"
         )
+        fig.update_xaxes(categoryorder="total descending")
         st.plotly_chart(fig, use_container_width=True)
     elif r_estado:
         fig = px.bar(dist_table(base, r_estado, r_saldo), x=r_estado, y="saldo", title="Saldo asignado por estado")
