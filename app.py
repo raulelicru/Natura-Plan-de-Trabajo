@@ -50,6 +50,12 @@ with st.sidebar.expander("Remesa", expanded=False):
     r_saldo = col_select("Saldo asignado", remesa, ["saldo_asignado", "saldo"], "r_saldo")
     r_aging = col_select("Aging de morosidad (temporalidad)", remesa, ["aging_de_morosidad", "aging", "temporalidad"], "r_aging")
     r_estado = col_select("Estado", remesa, ["estado"], "r_estado")
+    r_estado_residencia = col_select(
+        "Estado de residencia (geográfico)",
+        remesa,
+        ["direccion_de_residencia_estado", "estado_residencia", "estado_de_residencia"],
+        "r_estado_residencia",
+    )
     r_camino = col_select("Camino de crecimiento", remesa, ["camino_de_crecimiento", "camino_crecimiento"], "r_camino")
     r_segmento = col_select("Segmentación rep", remesa, ["segmentacion_rep", "segmentacion"], "r_segmento")
 
@@ -103,8 +109,8 @@ def col_or_none(value):
     return None if value == NA else value
 
 
-r_codigo, r_saldo, r_aging, r_estado, r_camino, r_segmento = (
-    col_or_none(x) for x in (r_codigo, r_saldo, r_aging, r_estado, r_camino, r_segmento)
+r_codigo, r_saldo, r_aging, r_estado, r_estado_residencia, r_camino, r_segmento = (
+    col_or_none(x) for x in (r_codigo, r_saldo, r_aging, r_estado, r_estado_residencia, r_camino, r_segmento)
 )
 p_codigo, p_pago = (col_or_none(x) for x in (p_codigo, p_pago)) if pagos is not None else (None, None)
 if vicidial is not None:
@@ -219,7 +225,12 @@ with tabs[0]:
     c3.metric("Recuperado", f"${total_recuperado:,.0f}")
     c4.metric("% Recuperación", f"{pct(total_recuperado, total_saldo):.1f}%")
 
-    if r_estado:
+    if r_estado_residencia:
+        fig = px.bar(
+            dist_table(base, r_estado_residencia, r_saldo), x=r_estado_residencia, y="saldo", title="Saldo asignado por estado"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    elif r_estado:
         fig = px.bar(dist_table(base, r_estado, r_saldo), x=r_estado, y="saldo", title="Saldo asignado por estado")
         st.plotly_chart(fig, use_container_width=True)
     if r_aging:
@@ -237,6 +248,7 @@ with tabs[1]:
     for label, col in [
         ("Distribución por temporalidad", r_aging),
         ("Distribución por estado", r_estado),
+        ("Distribución por estado de residencia", r_estado_residencia),
         ("Distribución por camino de crecimiento", r_camino),
         ("Distribución por segmentación rep", r_segmento),
     ]:
