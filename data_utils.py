@@ -59,6 +59,11 @@ def guess_column(columns, candidates):
 
 
 def pct(part, total):
+    if isinstance(total, pd.Series) or isinstance(part, pd.Series):
+        part = pd.to_numeric(pd.Series(part), errors="coerce")
+        total = pd.to_numeric(pd.Series(total), errors="coerce")
+        result = 100.0 * part / total
+        return result.fillna(0.0)
     if total in (0, None) or pd.isna(total):
         return 0.0
     return 100.0 * part / total
