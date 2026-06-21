@@ -2,6 +2,7 @@
 import io
 import unicodedata
 
+import numpy as np
 import pandas as pd
 
 
@@ -60,10 +61,13 @@ def guess_column(columns, candidates):
 
 def pct(part, total):
     if isinstance(total, pd.Series) or isinstance(part, pd.Series):
-        part = pd.to_numeric(pd.Series(part), errors="coerce")
-        total = pd.to_numeric(pd.Series(total), errors="coerce")
-        result = 100.0 * part / total
-        return result.fillna(0.0)
+        part_arr = part.to_numpy(dtype=float) if isinstance(part, pd.Series) else np.asarray(part, dtype=float)
+        total_arr = total.to_numpy(dtype=float) if isinstance(total, pd.Series) else np.asarray(total, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            result = np.where((total_arr == 0) | np.isnan(total_arr), 0.0, 100.0 * part_arr / total_arr)
+        if isinstance(part, pd.Series):
+            return pd.Series(result, index=part.index)
+        return result
     if total in (0, None) or pd.isna(total):
         return 0.0
     return 100.0 * part / total

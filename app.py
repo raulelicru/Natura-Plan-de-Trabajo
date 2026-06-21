@@ -216,6 +216,17 @@ def dist_table(df, col, value_col=None):
     return g.sort_values("cuentas", ascending=False)
 
 
+MONEY_KEYWORDS = ("saldo", "monto", "recuperado")
+
+
+def money_config(df):
+    return {
+        c: st.column_config.NumberColumn(format="%,.2f")
+        for c in df.columns
+        if any(k in c.lower() for k in MONEY_KEYWORDS)
+    }
+
+
 # --- Dashboard Ejecutivo ---------------------------------------------------
 with tabs[0]:
     st.subheader("Resumen Ejecutivo")
@@ -254,7 +265,8 @@ with tabs[1]:
     ]:
         if col:
             st.markdown(f"**{label}**")
-            st.dataframe(dist_table(base, col, r_saldo), use_container_width=True)
+            t_dist = dist_table(base, col, r_saldo)
+            st.dataframe(t_dist, use_container_width=True, column_config=money_config(t_dist))
 
 # --- Temporalidad --------------------------------------------------------
 with tabs[2]:
@@ -263,7 +275,8 @@ with tabs[2]:
         t = dist_table(base, r_aging, r_saldo).rename(
             columns={r_aging: "Temporalidad", "cuentas": "Número de cuentas", "saldo": "Saldo asignado", "pct_saldo": "% Participación"}
         )
-        st.dataframe(t[["Temporalidad", "Número de cuentas", "Saldo asignado", "% Participación"]], use_container_width=True)
+        t_show = t[["Temporalidad", "Número de cuentas", "Saldo asignado", "% Participación"]]
+        st.dataframe(t_show, use_container_width=True, column_config=money_config(t_show))
         st.plotly_chart(px.bar(t, x="Temporalidad", y="Saldo asignado", text="% Participación"), use_container_width=True)
     else:
         st.warning("Mapea la columna de aging de morosidad en Remesa.")
@@ -288,7 +301,8 @@ with tabs[3]:
             ).reset_index()
             g["pct_recuperacion"] = pct(g["monto_recuperado"], g["saldo_asignado"])
             st.markdown(f"**{label}**")
-            st.dataframe(g.sort_values("monto_recuperado", ascending=False), use_container_width=True)
+            g_show = g.sort_values("monto_recuperado", ascending=False)
+            st.dataframe(g_show, use_container_width=True, column_config=money_config(g_show))
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
 with tabs[4]:
@@ -362,17 +376,17 @@ with tabs[6]:
 
     if r_estado:
         st.markdown("**Estados con menor recuperación**")
-        st.dataframe(lowest_recovery(r_estado).head(10), use_container_width=True)
+        t_low = lowest_recovery(r_estado).head(10)
+        st.dataframe(t_low, use_container_width=True, column_config=money_config(t_low))
     if r_aging:
         st.markdown("**Temporalidades con menor recuperación**")
-        st.dataframe(lowest_recovery(r_aging).head(10), use_container_width=True)
+        t_low = lowest_recovery(r_aging).head(10)
+        st.dataframe(t_low, use_container_width=True, column_config=money_config(t_low))
     if r_segmento:
         g = lowest_recovery(r_segmento)
         st.markdown("**Segmentos con mayor potencial de recuperación** (alto saldo, baja recuperación)")
-        st.dataframe(
-            g[g["saldo_asignado"] > g["saldo_asignado"].median()].sort_values("pct_recuperacion").head(10),
-            use_container_width=True,
-        )
+        t_seg = g[g["saldo_asignado"] > g["saldo_asignado"].median()].sort_values("pct_recuperacion").head(10)
+        st.dataframe(t_seg, use_container_width=True, column_config=money_config(t_seg))
     if vicidial is not None and v_ejecutivo and v_status_name:
         st.markdown("**Ejecutivos con mejor desempeño** (mayor contactabilidad)")
         contact_set = st.session_state.get("v_contact_statuses", [])
@@ -475,7 +489,8 @@ with tabs[7]:
                     "% Recuperación": pct(gestionados["monto_recuperado"].sum(), gestionados[r_saldo].sum() if r_saldo else 0),
                 })
         if rec_rows:
-            st.dataframe(pd.DataFrame(rec_rows), use_container_width=True)
+            rec_df = pd.DataFrame(rec_rows)
+            st.dataframe(rec_df, use_container_width=True, column_config=money_config(rec_df))
     else:
         st.info("Sube al menos una base de Vicidial, SMS o Reminder/IVR para comparar canales.")
 
