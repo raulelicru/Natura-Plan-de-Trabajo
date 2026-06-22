@@ -598,24 +598,32 @@ with tabs[4]:
         c2.metric("Cuentas gestionadas", f"{cuentas_gestionadas:,}")
         c3.metric("Contactabilidad", f"{pct(contactadas, total_llamadas):.1f}%")
 
-        st.markdown("**Contactación (Contacto vs. No contacto)**")
-        contacto_df = pd.DataFrame(
-            {
-                "Resultado": ["Contacto", "No contacto"],
-                "Llamadas": [contactadas, total_llamadas - contactadas],
-            }
-        )
-        fig_contacto = px.pie(
-            contacto_df,
-            names="Resultado",
-            values="Llamadas",
-            hole=0.45,
-            color="Resultado",
-            color_discrete_map={"Contacto": "#00CC96", "No contacto": "#EF553B"},
-            title="% de contactación",
-        )
-        fig_contacto.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig_contacto, use_container_width=True)
+        st.markdown("**Contactación (Contacto vs. No contacto) — clientes únicos, columna AO**")
+        if v_codigo and v_contacto:
+            vic_ao = vicidial[[v_codigo, v_contacto]].copy()
+            vic_ao["__contacto_ao__"] = vic_ao[v_contacto].isin(st.session_state.get("v_contacto_statuses", []))
+            cliente_contacto = vic_ao.groupby(v_codigo)["__contacto_ao__"].any()
+            contactados_unicos = int(cliente_contacto.sum())
+            no_contactados_unicos = int(len(cliente_contacto) - contactados_unicos)
+            contacto_df = pd.DataFrame(
+                {
+                    "Resultado": ["Contacto", "No contacto"],
+                    "Clientes": [contactados_unicos, no_contactados_unicos],
+                }
+            )
+            fig_contacto = px.pie(
+                contacto_df,
+                names="Resultado",
+                values="Clientes",
+                hole=0.45,
+                color="Resultado",
+                color_discrete_map={"Contacto": "#00CC96", "No contacto": "#EF553B"},
+                title="% de contactación (clientes únicos)",
+            )
+            fig_contacto.update_traces(textinfo="percent+label")
+            st.plotly_chart(fig_contacto, use_container_width=True)
+        else:
+            st.caption("Mapea el código de cliente y la columna AO de contactabilidad para ver este indicador.")
 
         if v_status_name:
             st.markdown("**Resultados por status_name**")
