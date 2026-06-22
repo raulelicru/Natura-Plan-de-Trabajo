@@ -223,7 +223,6 @@ tabs = st.tabs(
         "Plan de Trabajo",
         "Dashboard Ejecutivo",
         "Inventario de Cartera",
-        "Temporalidad",
         "Recuperación",
         "Gestión Telefónica",
         "Gestión Automática",
@@ -531,56 +530,8 @@ with tabs[2]:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-# --- Temporalidad --------------------------------------------------------
-with tabs[3]:
-    st.subheader("Análisis de Temporalidad (Aging de Morosidad)")
-    if r_aging:
-        t = dist_table(relabel_aging(base, r_aging), r_aging, r_saldo).rename(
-            columns={
-                r_aging: "Temporalidad",
-                "cuentas": "Número de cuentas",
-                "pct_cuentas": "% Cuentas",
-                "saldo": "Saldo asignado",
-                "pct_saldo": "% Participación",
-            }
-        )
-        t_show = t[["Temporalidad", "Número de cuentas", "% Cuentas", "Saldo asignado", "% Participación"]]
-        st.dataframe(t_show, use_container_width=True, column_config=table_config(t_show))
-        t_chart = t.sort_values("Saldo asignado", ascending=False).copy()
-        t_chart["Etiqueta"] = t_chart["% Participación"].map(lambda v: f"{v:.2f}%")
-        try:
-            fig_funnel = px.funnel(
-                t_chart,
-                x="Saldo asignado",
-                y="Temporalidad",
-                color="Temporalidad",
-                color_discrete_sequence=px.colors.qualitative.Prism,
-                title="Saldo asignado por temporalidad",
-            )
-            st.plotly_chart(fig_funnel, use_container_width=True)
-        except Exception:
-            fig_funnel = px.bar(
-                t_chart, x="Saldo asignado", y="Temporalidad", orientation="h",
-                color="Temporalidad", color_discrete_sequence=px.colors.qualitative.Prism,
-                title="Saldo asignado por temporalidad",
-            )
-            st.plotly_chart(fig_funnel, use_container_width=True)
-        fig_line = px.line(
-            t.sort_values("Temporalidad"),
-            x="Temporalidad",
-            y="% Participación",
-            markers=True,
-            color_discrete_sequence=["#EF553B"],
-            title="% de participación por temporalidad",
-        )
-        fig_line.update_traces(line=dict(width=4), marker=dict(size=10))
-        fig_line.update_layout(yaxis_ticksuffix="%")
-        st.plotly_chart(fig_line, use_container_width=True)
-    else:
-        st.warning("Mapea la columna de aging de morosidad en Remesa.")
-
 # --- Recuperación --------------------------------------------------------
-with tabs[4]:
+with tabs[3]:
     st.subheader("Análisis de Recuperación")
     c1, c2 = st.columns(2)
     c1.metric("Recuperación total", f"${total_recuperado:,.0f}")
@@ -604,7 +555,7 @@ with tabs[4]:
             st.caption("La gráfica de saldo asignado vs. recuperado está en la pestaña **Inventario de Cartera**.")
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
-with tabs[5]:
+with tabs[4]:
     st.subheader("Análisis de Gestión Telefónica (Vicidial)")
     if vicidial is None:
         st.info("Sube la base Vicidial para ver este análisis.")
@@ -715,7 +666,7 @@ with tabs[5]:
                 contactabilidad_por(r_segmento, "segmentación rep")
 
 # --- Gestión Automática (Reminder) --------------------------------------
-with tabs[6]:
+with tabs[5]:
     st.subheader("Análisis de Gestión Automática (Reminder / IVR)")
     if reminder is None:
         st.info("Sube la base Reminder/IVR para ver este análisis.")
@@ -750,7 +701,7 @@ with tabs[6]:
             st.plotly_chart(fig_rm, use_container_width=True)
 
 # --- Oportunidades --------------------------------------------------------
-with tabs[7]:
+with tabs[6]:
     st.subheader("Identificación de Oportunidades")
 
     def lowest_recovery(col):
@@ -812,7 +763,7 @@ with tabs[7]:
         )
 
 # --- Efectividad por Canal -----------------------------------------------
-with tabs[8]:
+with tabs[7]:
     st.subheader("Efectividad por Canal (Llamadas, SMS, Reminder)")
 
     canal_rows = []
@@ -907,7 +858,7 @@ with tabs[8]:
         st.info("Sube al menos una base de Vicidial, SMS o Reminder/IVR para comparar canales.")
 
 # --- Línea base / Exportar -----------------------------------------------
-with tabs[9]:
+with tabs[8]:
     st.subheader("Línea Base de Indicadores")
     st.caption("Indicadores a comparar durante las próximas 4 semanas del plan de acción.")
     resumen = {
