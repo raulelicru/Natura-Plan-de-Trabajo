@@ -569,7 +569,7 @@ with tabs[3]:
                 category_orders={col: g_chart[col].tolist()},
             )
             fig_pct.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
-            fig_pct.update_yaxes(type="category", autorange="reversed", tickfont_size=14)
+            fig_pct.update_yaxes(type="category", tickfont_size=14)
             fig_pct.update_layout(
                 yaxis_title="",
                 xaxis_title="% Recuperación",
