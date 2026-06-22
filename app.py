@@ -352,15 +352,18 @@ with tabs[1]:
             st.markdown(f"**{label}**")
             t_dist = dist_table(relabel_aging(base, col), col, r_saldo)
             st.dataframe(pct_first(t_dist), use_container_width=True, column_config=table_config(t_dist))
-            fig = px.treemap(
-                t_dist,
-                path=[col],
-                values="saldo",
+            fig = px.bar(
+                t_dist.sort_values("saldo", ascending=True),
+                x="saldo",
+                y=col,
+                orientation="h",
                 color="cuentas",
                 color_continuous_scale="Plasma",
+                text="saldo",
                 title=label,
             )
-            fig.update_traces(texttemplate="%{label}<br>$%{value:,.0f}")
+            fig.update_traces(texttemplate="$%{text:,.0f}")
+            fig.update_layout(coloraxis_showscale=False, yaxis_title="", xaxis_title="Saldo asignado")
             st.plotly_chart(fig, use_container_width=True)
 
 # --- Temporalidad --------------------------------------------------------
@@ -374,15 +377,23 @@ with tabs[2]:
         st.dataframe(t_show, use_container_width=True, column_config=table_config(t_show))
         t_chart = t.sort_values("Saldo asignado", ascending=False).copy()
         t_chart["Etiqueta"] = t_chart["% Participación"].map(lambda v: f"{v:.2f}%")
-        fig_funnel = px.funnel(
-            t_chart,
-            x="Saldo asignado",
-            y="Temporalidad",
-            color="Temporalidad",
-            color_discrete_sequence=px.colors.qualitative.Prism,
-            title="Saldo asignado por temporalidad",
-        )
-        st.plotly_chart(fig_funnel, use_container_width=True)
+        try:
+            fig_funnel = px.funnel(
+                t_chart,
+                x="Saldo asignado",
+                y="Temporalidad",
+                color="Temporalidad",
+                color_discrete_sequence=px.colors.qualitative.Prism,
+                title="Saldo asignado por temporalidad",
+            )
+            st.plotly_chart(fig_funnel, use_container_width=True)
+        except Exception:
+            fig_funnel = px.bar(
+                t_chart, x="Saldo asignado", y="Temporalidad", orientation="h",
+                color="Temporalidad", color_discrete_sequence=px.colors.qualitative.Prism,
+                title="Saldo asignado por temporalidad",
+            )
+            st.plotly_chart(fig_funnel, use_container_width=True)
         fig_line = px.line(
             t.sort_values("Temporalidad"),
             x="Temporalidad",
@@ -679,15 +690,24 @@ with tabs[7]:
     if canal_rows:
         canal_df = pd.DataFrame(canal_rows)
         st.dataframe(canal_df, use_container_width=True)
-        fig_canal = px.funnel(
-            canal_df.sort_values("% Efectividad", ascending=False),
-            x="% Efectividad",
-            y="Canal",
-            color="Canal",
-            color_discrete_sequence=px.colors.qualitative.Bold,
-            title="% Efectividad por canal",
-        )
-        st.plotly_chart(fig_canal, use_container_width=True)
+        try:
+            fig_canal = px.funnel(
+                canal_df.sort_values("% Efectividad", ascending=False),
+                x="% Efectividad",
+                y="Canal",
+                color="Canal",
+                color_discrete_sequence=px.colors.qualitative.Bold,
+                title="% Efectividad por canal",
+            )
+            st.plotly_chart(fig_canal, use_container_width=True)
+        except Exception:
+            fig_canal = px.bar(
+                canal_df.sort_values("% Efectividad", ascending=True),
+                x="% Efectividad", y="Canal", orientation="h", color="Canal",
+                color_discrete_sequence=px.colors.qualitative.Bold,
+                title="% Efectividad por canal",
+            )
+            st.plotly_chart(fig_canal, use_container_width=True)
 
         st.markdown("**Recuperación asociada a cuentas gestionadas por canal**")
         rec_rows = []
