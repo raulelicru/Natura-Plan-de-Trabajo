@@ -65,7 +65,7 @@ if pagos is not None:
         p_codigo = col_select("Código de cliente", pagos, ["codigo_de_cliente", "codigo_cliente"], "p_codigo")
         p_pago = col_select("Pago aplicado", pagos, ["pago_aplicado", "monto_pagado", "pago"], "p_pago")
 
-v_codigo = v_status = v_status_name = v_ejecutivo = v_fecha = None
+v_codigo = v_status = v_status_name = v_ejecutivo = v_fecha = v_contacto = None
 if vicidial is not None:
     with st.sidebar.expander("Vicidial", expanded=False):
         v_codigo = col_select("Código de cliente", vicidial, ["codigo_de_cliente", "codigo_cliente"], "v_codigo")
@@ -73,10 +73,16 @@ if vicidial is not None:
         v_status_name = col_select("Status name", vicidial, ["status_name"], "v_status_name")
         v_ejecutivo = col_select("Ejecutivo / agente", vicidial, ["ejecutivo", "agente", "user", "usuario"], "v_ejecutivo")
         v_fecha = col_select("Fecha/hora de llamada", vicidial, ["fecha", "call_date", "fecha_llamada", "hora"], "v_fecha")
+        v_contacto = col_select("Contactabilidad (columna AO)", vicidial, ["contactabilidad", "contacto"], "v_contacto")
         v_contact_statuses = st.multiselect(
             "Status considerados 'contacto efectivo'",
             sorted(vicidial[v_status_name].dropna().unique().tolist()) if v_status_name != "(ninguna)" else [],
             key="v_contact_statuses",
+        )
+        v_contacto_statuses = st.multiselect(
+            "Valores de la columna de contactabilidad considerados 'contacto efectivo'",
+            sorted(vicidial[v_contacto].dropna().unique().tolist()) if v_contacto != "(ninguna)" else [],
+            key="v_contacto_statuses",
         )
 
 s_codigo = s_estado = None
@@ -114,8 +120,8 @@ r_codigo, r_saldo, r_aging, r_estado, r_estado_residencia, r_camino, r_segmento 
 )
 p_codigo, p_pago = (col_or_none(x) for x in (p_codigo, p_pago)) if pagos is not None else (None, None)
 if vicidial is not None:
-    v_codigo, v_status, v_status_name, v_ejecutivo, v_fecha = (
-        col_or_none(x) for x in (v_codigo, v_status, v_status_name, v_ejecutivo, v_fecha)
+    v_codigo, v_status, v_status_name, v_ejecutivo, v_fecha, v_contacto = (
+        col_or_none(x) for x in (v_codigo, v_status, v_status_name, v_ejecutivo, v_fecha, v_contacto)
     )
 if sms is not None:
     s_codigo, s_estado = (col_or_none(x) for x in (s_codigo, s_estado))
@@ -227,6 +233,15 @@ def money_config(df):
     }
 
 
+def vicidial_contacto_mask(df):
+    """Máscara de contacto efectivo: prioriza la columna de contactabilidad (AO) sobre status_name."""
+    if v_contacto:
+        return df[v_contacto].isin(st.session_state.get("v_contacto_statuses", []))
+    if v_status_name:
+        return df[v_status_name].isin(st.session_state.get("v_contact_statuses", []))
+    return pd.Series(False, index=df.index)
+
+
 # --- Dashboard Ejecutivo ---------------------------------------------------
 with tabs[0]:
     st.subheader("Resumen Ejecutivo")
@@ -318,11 +333,8 @@ with tabs[4]:
     else:
         total_llamadas = len(vicidial)
         cuentas_gestionadas = vicidial[v_codigo].nunique() if v_codigo else 0
-        contactadas = (
-            vicidial[v_status_name].isin(st.session_state.get("v_contact_statuses", [])).sum()
-            if v_status_name
-            else 0
-        )
+        contacto_mask = vicidial_contacto_mask(vicidial)
+        contactadas = contacto_mask.sum()
         c1, c2, c3 = st.columns(3)
         c1.metric("Total de llamadas", f"{total_llamadas:,}")
         c2.metric("Cuentas gestionadas", f"{cuentas_gestionadas:,}")
@@ -343,6 +355,35 @@ with tabs[4]:
                 st.plotly_chart(px.bar(dist_horario, x="Hora", y="Llamadas"), use_container_width=True)
             except Exception:
                 st.warning("No se pudo interpretar la columna de fecha/hora.")
+
+        if v_codigo and (r_aging or r_estado or r_segmento):
+            st.markdown("### Contactabilidad por temporalidad, estado y segmentación")
+            vic_join = vicidial.copy()
+            vic_join["__contactado__"] = contacto_mask
+            join_cols = [c for c in [r_aging, r_estado, r_segmento] if c]
+            vic_join = vic_join.merge(
+                remesa[[r_codigo] + join_cols].drop_duplicates(r_codigo),
+                left_on=v_codigo,
+                right_on=r_codigo,
+                how="left",
+            )
+
+            def contactabilidad_por(col, label):
+                g = vic_join.groupby(col, dropna=False).agg(
+                    llamadas=(col, "size"), contactos=("__contactado__", "sum")
+                ).reset_index()
+                g["% Contactabilidad"] = pct(g["contactos"], g["llamadas"])
+                st.markdown(f"**Contactabilidad por {label}**")
+                st.dataframe(g.sort_values("% Contactabilidad", ascending=False), use_container_width=True)
+                fig = px.bar(g, x=col, y="% Contactabilidad", title=f"% Contactabilidad por {label}")
+                st.plotly_chart(fig, use_container_width=True)
+
+            if r_aging:
+                contactabilidad_por(r_aging, "temporalidad")
+            if r_estado:
+                contactabilidad_por(r_estado, "estado")
+            if r_segmento:
+                contactabilidad_por(r_segmento, "segmentación rep")
 
 # --- Gestión Automática (Reminder) --------------------------------------
 with tabs[5]:
@@ -393,12 +434,13 @@ with tabs[6]:
         st.markdown("**Segmentos con mayor potencial de recuperación** (alto saldo, baja recuperación)")
         t_seg = g[g["saldo_asignado"] > g["saldo_asignado"].median()].sort_values("pct_recuperacion").head(10)
         st.dataframe(t_seg, use_container_width=True, column_config=money_config(t_seg))
-    if vicidial is not None and v_ejecutivo and v_status_name:
+    if vicidial is not None and v_ejecutivo and (v_contacto or v_status_name):
         st.markdown("**Ejecutivos con mejor desempeño** (mayor contactabilidad)")
-        contact_set = st.session_state.get("v_contact_statuses", [])
-        perf = vicidial.groupby(v_ejecutivo, dropna=False).agg(
+        vic_perf = vicidial.copy()
+        vic_perf["__contactado__"] = vicidial_contacto_mask(vicidial)
+        perf = vic_perf.groupby(v_ejecutivo, dropna=False).agg(
             llamadas=(v_ejecutivo, "size"),
-            contactos=(v_status_name, lambda s: s.isin(contact_set).sum()),
+            contactos=("__contactado__", "sum"),
         ).reset_index()
         perf["pct_contactabilidad"] = pct(perf["contactos"], perf["llamadas"])
         st.dataframe(perf.sort_values("pct_contactabilidad", ascending=False).head(10), use_container_width=True)
@@ -406,7 +448,7 @@ with tabs[6]:
     canales_disponibles = []
     if vicidial is not None:
         canal_v = pct(
-            vicidial[v_status_name].isin(st.session_state.get("v_contact_statuses", [])).sum() if v_status_name else 0,
+            vicidial_contacto_mask(vicidial).sum() if (v_contacto or v_status_name) else 0,
             len(vicidial),
         )
         canales_disponibles.append({"Canal": "Vicidial", "% Contactabilidad": canal_v})
@@ -435,11 +477,7 @@ with tabs[7]:
 
     canal_rows = []
     if vicidial is not None:
-        contactos_v = (
-            vicidial[v_status_name].isin(st.session_state.get("v_contact_statuses", [])).sum()
-            if v_status_name
-            else 0
-        )
+        contactos_v = vicidial_contacto_mask(vicidial).sum() if (v_contacto or v_status_name) else 0
         canal_rows.append({
             "Canal": "Llamadas (Vicidial)",
             "Gestiones/Envíos": len(vicidial),
@@ -513,10 +551,8 @@ with tabs[8]:
     if vicidial is not None:
         resumen["Llamadas Vicidial"] = len(vicidial)
         resumen["Cuentas gestionadas (Vicidial)"] = vicidial[v_codigo].nunique() if v_codigo else None
-        if v_status_name:
-            resumen["% Contactabilidad Vicidial"] = pct(
-                vicidial[v_status_name].isin(st.session_state.get("v_contact_statuses", [])).sum(), len(vicidial)
-            )
+        if v_contacto or v_status_name:
+            resumen["% Contactabilidad Vicidial"] = pct(vicidial_contacto_mask(vicidial).sum(), len(vicidial))
     if sms is not None:
         resumen["SMS enviados"] = len(sms)
         if s_estado:
