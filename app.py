@@ -471,7 +471,8 @@ with tabs[4]:
 
         if v_ejecutivo:
             st.markdown("**Gestiones por ejecutivo**")
-            d_ejec = dist_table(vicidial, v_ejecutivo)
+            vicidial_ejec = vicidial[~vicidial[v_ejecutivo].astype(str).str.upper().eq("VDAD")]
+            d_ejec = dist_table(vicidial_ejec, v_ejecutivo)
             st.dataframe(d_ejec, use_container_width=True)
             d_ejec_chart = d_ejec.sort_values("cuentas", ascending=True).copy()
             d_ejec_chart[v_ejecutivo] = d_ejec_chart[v_ejecutivo].astype(str)
