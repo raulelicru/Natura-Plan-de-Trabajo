@@ -9,10 +9,68 @@ from plotly.subplots import make_subplots
 
 from data_utils import guess_column, pct, read_any
 
+# Paleta de marca Natura Cosméticos: verdes naturales, dorado/terracota como
+# acentos cálidos, sobre fondo crema. Se usa en toda la app (CSS, gráficas).
+NATURA_GREEN_DARK = "#0B5D3B"
+NATURA_GREEN = "#3E8E4F"
+NATURA_GREEN_LIGHT = "#8FC93A"
+NATURA_GOLD = "#D9A441"
+NATURA_TERRACOTA = "#C1622D"
+NATURA_BROWN = "#5B4636"
+NATURA_CREAM = "#F7F3E9"
+
+NATURA_DISCRETE = [
+    NATURA_GREEN_DARK,
+    NATURA_GOLD,
+    NATURA_GREEN_LIGHT,
+    NATURA_TERRACOTA,
+    NATURA_GREEN,
+    NATURA_BROWN,
+    "#A8D08D",
+    "#E8B96A",
+]
+NATURA_SCALE = ["#EAF4E1", "#BBE3A0", "#8FC93A", "#4C9F4C", "#0B5D3B"]
+
 px.defaults.template = "plotly_white"
-px.defaults.color_discrete_sequence = px.colors.qualitative.Bold
+px.defaults.color_discrete_sequence = NATURA_DISCRETE
 
 st.set_page_config(page_title="Resultado de Gestión", layout="wide")
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-color: {NATURA_CREAM};
+    }}
+    h1, h2, h3 {{
+        color: {NATURA_GREEN_DARK} !important;
+        font-family: 'Georgia', serif;
+    }}
+    [data-testid="stMetricValue"] {{
+        color: {NATURA_GREEN_DARK};
+    }}
+    [data-testid="stMetricLabel"] {{
+        color: {NATURA_BROWN};
+    }}
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 4px;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        background-color: #FFFFFF;
+        border-radius: 8px 8px 0 0;
+        color: {NATURA_BROWN};
+    }}
+    .stTabs [aria-selected="true"] {{
+        background-color: {NATURA_GREEN_DARK} !important;
+        color: #FFFFFF !important;
+    }}
+    section[data-testid="stSidebar"] {{
+        background-color: #FFFFFF;
+        border-right: 1px solid {NATURA_GREEN_LIGHT};
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.title("Resultado de Gestión")
 st.caption(
     "Línea base de recuperación, contactabilidad y productividad operativa "
@@ -447,7 +505,7 @@ with tabs[1]:
             y=r_estado_residencia,
             orientation="h",
             color="saldo",
-            color_continuous_scale="Sunset",
+            color_continuous_scale=NATURA_SCALE,
             text="saldo",
             title="Saldo asignado por estado (top 10)",
         )
@@ -460,7 +518,7 @@ with tabs[1]:
         d[r_estado] = d[r_estado].astype(str)
         fig = px.bar(
             d, x="saldo", y=r_estado, orientation="h", color="saldo",
-            color_continuous_scale="Sunset", title="Saldo asignado por estado",
+            color_continuous_scale=NATURA_SCALE, title="Saldo asignado por estado",
         )
         fig.update_layout(coloraxis_showscale=False)
         fig.update_yaxes(type="category")
@@ -471,7 +529,7 @@ with tabs[1]:
             names=r_aging,
             values="saldo",
             hole=0.45,
-            color_discrete_sequence=px.colors.qualitative.Vivid,
+            color_discrete_sequence=NATURA_DISCRETE,
             title="Saldo por temporalidad",
         )
         fig2.update_traces(textinfo="percent+label", pull=0.02)
@@ -507,7 +565,7 @@ with tabs[2]:
                 y=col,
                 orientation="h",
                 color="saldo",
-                color_continuous_scale="Blues",
+                color_continuous_scale=NATURA_SCALE,
                 text="saldo",
                 title=f"Asignado — {label}"
                 + (" (top 10)" if col in (r_estado, r_estado_residencia) else ""),
@@ -559,7 +617,7 @@ with tabs[3]:
                 y=col,
                 orientation="h",
                 color="pct_recuperacion",
-                color_continuous_scale="Tealgrn",
+                color_continuous_scale=NATURA_SCALE,
                 text="pct_recuperacion",
                 title=f"% de recuperación — {label}",
                 category_orders={col: g_chart[col].tolist()},
@@ -622,7 +680,7 @@ with tabs[4]:
                 values="Clientes",
                 hole=0.45,
                 color="Resultado",
-                color_discrete_map={"Contacto": "#00CC96", "No contacto": "#EF553B"},
+                color_discrete_map={"Contacto": NATURA_GREEN_DARK, "No contacto": NATURA_TERRACOTA},
                 title="% de contactación (clientes únicos)",
             )
             fig_contacto.update_traces(textinfo="percent+label")
@@ -659,7 +717,7 @@ with tabs[4]:
                 st.markdown("**Llamadas por hora del día**")
                 fig_hora = make_subplots(specs=[[{"secondary_y": True}]])
                 fig_hora.add_trace(
-                    go.Bar(x=g_hora["Hora"], y=g_hora["Llamadas"], name="Llamadas", marker_color="#636EFA"),
+                    go.Bar(x=g_hora["Hora"], y=g_hora["Llamadas"], name="Llamadas", marker_color=NATURA_GREEN),
                     secondary_y=False,
                 )
                 fig_hora.add_trace(
@@ -668,7 +726,7 @@ with tabs[4]:
                         y=g_hora["% Contactación"],
                         name="% Contactación",
                         mode="lines+markers",
-                        line=dict(color="#EF553B", width=3),
+                        line=dict(color=NATURA_TERRACOTA, width=3),
                         marker=dict(size=8),
                     ),
                     secondary_y=True,
@@ -709,7 +767,7 @@ with tabs[5]:
                 names=rm_estado,
                 values="cuentas",
                 hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Pastel,
+                color_discrete_sequence=NATURA_DISCRETE,
                 title="Resultados por estado de llamada (Reminder/IVR)",
             )
             fig_rm.update_traces(textinfo="percent+label")
@@ -827,7 +885,7 @@ with tabs[7]:
                 x="% Efectividad",
                 y="Canal",
                 color="Canal",
-                color_discrete_sequence=px.colors.qualitative.Bold,
+                color_discrete_sequence=NATURA_DISCRETE,
                 title="% Efectividad por canal",
             )
             st.plotly_chart(fig_canal, use_container_width=True)
@@ -835,7 +893,7 @@ with tabs[7]:
             fig_canal = px.bar(
                 canal_df.sort_values("% Efectividad", ascending=True),
                 x="% Efectividad", y="Canal", orientation="h", color="Canal",
-                color_discrete_sequence=px.colors.qualitative.Bold,
+                color_discrete_sequence=NATURA_DISCRETE,
                 title="% Efectividad por canal",
             )
             st.plotly_chart(fig_canal, use_container_width=True)
@@ -865,7 +923,7 @@ with tabs[7]:
                 y="Monto",
                 color="Concepto",
                 barmode="group",
-                color_discrete_sequence=["#636EFA", "#00CC96"],
+                color_discrete_sequence=[NATURA_GOLD, NATURA_GREEN_DARK],
                 title="Saldo asignado vs. recuperado por canal",
             )
             st.plotly_chart(fig_rec, use_container_width=True)
