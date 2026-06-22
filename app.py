@@ -291,9 +291,17 @@ def reorder_table(df, col):
 
 
 def vicidial_contacto_mask(df):
-    """Máscara de contacto efectivo: prioriza la columna de contactabilidad (AO) sobre status_name."""
+    """Máscara de contacto efectivo: prioriza la columna de contactabilidad (AO) sobre status_name.
+
+    Si no se seleccionaron valores específicos en el filtro lateral, clasifica
+    directamente por el texto de la columna AO ("NO ..." = no contacto).
+    """
+    selected = st.session_state.get("v_contacto_statuses", [])
+    if v_contacto and selected:
+        return df[v_contacto].isin(selected)
     if v_contacto:
-        return df[v_contacto].isin(st.session_state.get("v_contacto_statuses", []))
+        valor_ao = df[v_contacto].astype(str).str.strip().str.upper()
+        return ~(valor_ao.str.startswith("NO") | valor_ao.isin(["", "NAN", "NONE"]))
     if v_status_name:
         return df[v_status_name].isin(st.session_state.get("v_contact_statuses", []))
     return pd.Series(False, index=df.index)
@@ -601,15 +609,18 @@ with tabs[4]:
         st.markdown("**Contactación (Contacto vs. No contacto) — clientes únicos, columna AO**")
         if v_codigo and v_contacto:
             vic_ao = vicidial[[v_codigo, v_contacto]].copy()
-            vic_ao["__contacto_ao__"] = vic_ao[v_contacto].isin(st.session_state.get("v_contacto_statuses", []))
-            cliente_contacto = vic_ao.groupby(v_codigo)["__contacto_ao__"].any()
-            contactados_unicos = int(cliente_contacto.sum())
-            no_contactados_unicos = int(len(cliente_contacto) - contactados_unicos)
-            contacto_df = pd.DataFrame(
-                {
-                    "Resultado": ["Contacto", "No contacto"],
-                    "Clientes": [contactados_unicos, no_contactados_unicos],
-                }
+            valor_ao = vic_ao[v_contacto].astype(str).str.strip().str.upper()
+            vic_ao["__categoria__"] = valor_ao.map(
+                lambda v: "No contacto" if v.startswith("NO") or v in ("", "NAN", "NONE") else "Contacto"
+            )
+            cliente_cat = vic_ao.groupby(v_codigo)["__categoria__"].agg(
+                lambda s: "Contacto" if (s == "Contacto").any() else "No contacto"
+            )
+            contacto_df = (
+                cliente_cat.value_counts()
+                .reindex(["Contacto", "No contacto"], fill_value=0)
+                .rename_axis("Resultado")
+                .reset_index(name="Clientes")
             )
             fig_contacto = px.pie(
                 contacto_df,
