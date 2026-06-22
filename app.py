@@ -300,6 +300,7 @@ with tabs[0]:
 
     if r_estado_residencia:
         top_estados = dist_table(base, r_estado_residencia, r_saldo).sort_values("saldo", ascending=True).tail(15)
+        top_estados[r_estado_residencia] = top_estados[r_estado_residencia].astype(str)
         fig = px.bar(
             top_estados,
             x="saldo",
@@ -312,14 +313,17 @@ with tabs[0]:
         )
         fig.update_traces(texttemplate="$%{text:,.0f}")
         fig.update_layout(yaxis_title="", xaxis_title="Saldo asignado", coloraxis_showscale=False)
+        fig.update_yaxes(type="category")
         st.plotly_chart(fig, use_container_width=True)
     elif r_estado:
         d = dist_table(base, r_estado, r_saldo).sort_values("saldo", ascending=True)
+        d[r_estado] = d[r_estado].astype(str)
         fig = px.bar(
             d, x="saldo", y=r_estado, orientation="h", color="saldo",
             color_continuous_scale="Sunset", title="Saldo asignado por estado",
         )
         fig.update_layout(coloraxis_showscale=False)
+        fig.update_yaxes(type="category")
         st.plotly_chart(fig, use_container_width=True)
     if r_aging:
         fig2 = px.pie(
@@ -352,8 +356,10 @@ with tabs[1]:
             st.markdown(f"**{label}**")
             t_dist = dist_table(relabel_aging(base, col), col, r_saldo)
             st.dataframe(pct_first(t_dist), use_container_width=True, column_config=table_config(t_dist))
+            t_chart = t_dist.sort_values("saldo", ascending=True).copy()
+            t_chart[col] = t_chart[col].astype(str)
             fig = px.bar(
-                t_dist.sort_values("saldo", ascending=True),
+                t_chart,
                 x="saldo",
                 y=col,
                 orientation="h",
@@ -363,6 +369,7 @@ with tabs[1]:
                 title=label,
             )
             fig.update_traces(texttemplate="$%{text:,.0f}")
+            fig.update_yaxes(type="category")
             fig.update_layout(coloraxis_showscale=False, yaxis_title="", xaxis_title="Saldo asignado")
             st.plotly_chart(fig, use_container_width=True)
 
@@ -430,7 +437,8 @@ with tabs[3]:
             st.markdown(f"**{label}**")
             g_show = g.sort_values("monto_recuperado", ascending=False)
             st.dataframe(pct_first(g_show), use_container_width=True, column_config=table_config(g_show))
-            g_chart = g_show.sort_values("pct_recuperacion", ascending=True)
+            g_chart = g_show.sort_values("pct_recuperacion", ascending=True).copy()
+            g_chart[col] = g_chart[col].astype(str)
             fig = px.bar(
                 g_chart,
                 x="pct_recuperacion",
@@ -443,6 +451,7 @@ with tabs[3]:
             )
             fig.update_traces(texttemplate="%{text:.2f}%")
             fig.update_layout(xaxis_title="% Recuperación", yaxis_title="", coloraxis_showscale=False)
+            fig.update_yaxes(type="category")
             st.plotly_chart(fig, use_container_width=True)
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
@@ -464,8 +473,10 @@ with tabs[4]:
             st.markdown("**Gestiones por ejecutivo**")
             d_ejec = dist_table(vicidial, v_ejecutivo)
             st.dataframe(d_ejec, use_container_width=True)
+            d_ejec_chart = d_ejec.sort_values("cuentas", ascending=True).copy()
+            d_ejec_chart[v_ejecutivo] = d_ejec_chart[v_ejecutivo].astype(str)
             fig_ejec = px.bar(
-                d_ejec.sort_values("cuentas", ascending=True),
+                d_ejec_chart,
                 x="cuentas",
                 y=v_ejecutivo,
                 orientation="h",
@@ -474,6 +485,7 @@ with tabs[4]:
                 title="Gestiones por ejecutivo",
             )
             fig_ejec.update_layout(coloraxis_showscale=False, yaxis_title="")
+            fig_ejec.update_yaxes(type="category")
             st.plotly_chart(fig_ejec, use_container_width=True)
         if v_status_name:
             st.markdown("**Resultados de llamada por status_name**")
@@ -528,8 +540,10 @@ with tabs[4]:
                 g = g.sort_values("% Contactabilidad", ascending=False)
                 st.markdown(f"**Contactabilidad por {label}**")
                 st.dataframe(pct_first(g), use_container_width=True, column_config=table_config(g))
+                g_chart = g.sort_values("% Contactabilidad", ascending=True).copy()
+                g_chart[col] = g_chart[col].astype(str)
                 fig = px.bar(
-                    g.sort_values("% Contactabilidad", ascending=True),
+                    g_chart,
                     x="% Contactabilidad",
                     y=col,
                     orientation="h",
@@ -540,6 +554,7 @@ with tabs[4]:
                 )
                 fig.update_traces(texttemplate="%{text:.2f}%")
                 fig.update_layout(coloraxis_showscale=False, yaxis_title="")
+                fig.update_yaxes(type="category")
                 st.plotly_chart(fig, use_container_width=True)
 
             if r_aging:
