@@ -499,6 +499,34 @@ with tabs[2]:
                 t_dist = t_dist.head(10)
             st.dataframe(reorder_table(t_dist, col), use_container_width=True, column_config=table_config(t_dist))
 
+            if col == r_aging:
+                t_chart = t_dist.sort_values("saldo", ascending=False).copy()
+                t_chart[col] = t_chart[col].astype(str)
+                fig = px.bar(
+                    t_chart,
+                    x="saldo",
+                    y=col,
+                    orientation="h",
+                    color="saldo",
+                    color_continuous_scale="Blues",
+                    text="saldo",
+                    title=f"Asignado — {label}",
+                    category_orders={col: t_chart[col].tolist()},
+                )
+                fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside", textfont_size=13)
+                fig.update_yaxes(type="category", autorange="reversed", tickfont_size=14)
+                fig.update_xaxes(tickfont_size=13)
+                fig.update_layout(
+                    yaxis_title="",
+                    xaxis_title="Monto asignado ($)",
+                    coloraxis_showscale=False,
+                    height=max(420, 70 * t_chart[col].nunique()),
+                    font=dict(size=14),
+                    margin=dict(l=10, r=10, t=60, b=10),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                continue
+
             recup = base_rel.groupby(col, dropna=False)["monto_recuperado"].sum().reset_index()
             t_chart = t_dist.merge(recup, on=col, how="left")
             t_chart["monto_recuperado"] = t_chart["monto_recuperado"].fillna(0)
@@ -522,7 +550,7 @@ with tabs[2]:
                 barmode="group",
                 text="Monto",
                 color_discrete_sequence=["#636EFA", "#00CC96"],
-                title=f"Inventario vs. recuperación — {label}"
+                title=f"Asignado vs. recuperación — {label}"
                 + (" (top 10)" if col in (r_estado, r_estado_residencia) else ""),
                 category_orders={col: t_chart[col].tolist()},
             )
