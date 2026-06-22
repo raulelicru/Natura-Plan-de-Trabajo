@@ -584,6 +584,42 @@ with tabs[2]:
             )
             st.plotly_chart(fig, use_container_width=True)
 
+    if r_estado_residencia and r_aging:
+        st.markdown("**Cuentas y saldo por estado y temporalidad**")
+        base_rel2 = relabel_aging(base, r_aging)
+        g = base_rel2.groupby([r_estado_residencia, r_aging], dropna=False).agg(
+            cuentas=(r_aging, "size"),
+            saldo=(r_saldo, "sum") if r_saldo else (r_aging, "size"),
+        ).reset_index()
+        _tem_order = list(AGING_MAP.values())
+        temporalidades = sorted(
+            g[r_aging].dropna().unique(),
+            key=lambda v: _tem_order.index(v) if v in _tem_order else len(_tem_order),
+        )
+
+        cuentas_piv = g.pivot(index=r_estado_residencia, columns=r_aging, values="cuentas").fillna(0)
+        saldo_piv = g.pivot(index=r_estado_residencia, columns=r_aging, values="saldo").fillna(0)
+        cuentas_piv = cuentas_piv[[t for t in temporalidades if t in cuentas_piv.columns]]
+        saldo_piv = saldo_piv[[t for t in temporalidades if t in saldo_piv.columns]]
+
+        tabla_abs = pd.DataFrame(index=cuentas_piv.index)
+        for t in cuentas_piv.columns:
+            tabla_abs[f"{t} Cuentas"] = cuentas_piv[t].astype(int)
+            tabla_abs[f"{t} Saldo"] = saldo_piv[t]
+        tabla_abs = tabla_abs.reset_index()
+        st.caption("Cuentas y saldo asignado por estado, desglosado por temporalidad.")
+        st.dataframe(tabla_abs, use_container_width=True, column_config=table_config(tabla_abs))
+
+        total_cuentas_estado = cuentas_piv.sum(axis=1)
+        total_saldo_estado = saldo_piv.sum(axis=1)
+        tabla_pct = pd.DataFrame(index=cuentas_piv.index)
+        for t in cuentas_piv.columns:
+            tabla_pct[f"{t} % Cuentas"] = pct(cuentas_piv[t], total_cuentas_estado)
+            tabla_pct[f"{t} % Saldo"] = pct(saldo_piv[t], total_saldo_estado)
+        tabla_pct = tabla_pct.reset_index()
+        st.caption("% que representa cada temporalidad dentro del total de cuentas y saldo de cada estado.")
+        st.dataframe(tabla_pct, use_container_width=True, column_config=table_config(tabla_pct))
+
 # --- Recuperación --------------------------------------------------------
 with tabs[3]:
     st.subheader("Análisis de Recuperación")
