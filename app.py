@@ -550,7 +550,7 @@ with tabs[3]:
             ).reset_index()
             g["pct_recuperacion"] = pct(g["monto_recuperado"], g["saldo_asignado"])
             st.markdown(f"**{label}**")
-            g_show = g.sort_values("monto_recuperado", ascending=False)
+            g_show = g.sort_values("pct_recuperacion", ascending=False)
             if col in (r_estado, r_estado_residencia):
                 g_show = g_show.head(10)
             st.dataframe(reorder_table(g_show, col), use_container_width=True, column_config=table_config(g_show))
