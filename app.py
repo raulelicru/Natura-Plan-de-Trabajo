@@ -492,7 +492,7 @@ with tabs[2]:
             recup = base_rel.groupby(col, dropna=False)["monto_recuperado"].sum().reset_index()
             t_chart = t_dist.merge(recup, on=col, how="left")
             t_chart["monto_recuperado"] = t_chart["monto_recuperado"].fillna(0)
-            t_chart = t_chart.sort_values("saldo", ascending=True).copy()
+            t_chart = t_chart.sort_values("saldo", ascending=False).copy()
             t_chart[col] = t_chart[col].astype(str)
             t_melt = t_chart.melt(
                 id_vars=col,
@@ -510,10 +510,13 @@ with tabs[2]:
                 color="Concepto",
                 orientation="h",
                 barmode="group",
+                text="Monto",
                 color_discrete_sequence=["#636EFA", "#00CC96"],
                 title=f"Inventario vs. recuperación — {label}",
+                category_orders={col: t_chart[col].tolist()},
             )
-            fig.update_yaxes(type="category")
+            fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+            fig.update_yaxes(type="category", autorange="reversed")
             fig.update_layout(yaxis_title="", xaxis_title="Monto ($)")
             st.plotly_chart(fig, use_container_width=True)
 
