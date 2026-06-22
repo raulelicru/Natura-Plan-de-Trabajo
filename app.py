@@ -268,7 +268,7 @@ def is_pct_col(c):
 
 
 def pct_config(df):
-    return {c: st.column_config.NumberColumn(format="%.2f%%") for c in df.columns if is_pct_col(c)}
+    return {c: st.column_config.NumberColumn(format="%.4f%%") for c in df.columns if is_pct_col(c)}
 
 
 def table_config(df):
@@ -653,17 +653,10 @@ with tabs[4]:
                     right_on=r_codigo,
                     how="left",
                 )
-                d_status = vic_contacto.groupby(v_status_name, dropna=False).agg(
-                    llamadas_contactables=(v_status_name, "size"),
-                    saldo=(r_saldo, "sum"),
-                    recuperado=("monto_recuperado", "sum"),
-                ).reset_index()
-                d_status["% de Recuperación"] = pct(d_status["recuperado"], d_status["saldo"])
-                d_status = d_status.drop(columns=["saldo", "recuperado"])
-            else:
-                d_status = vic_contacto.groupby(v_status_name, dropna=False).size().reset_index(
-                    name="llamadas_contactables"
-                )
+            d_status = vic_contacto.groupby(v_status_name, dropna=False).size().reset_index(
+                name="llamadas_contactables"
+            )
+            d_status["% Llamadas"] = pct(d_status["llamadas_contactables"], d_status["llamadas_contactables"].sum())
             d_status = d_status.sort_values("llamadas_contactables", ascending=False)
             st.dataframe(d_status, use_container_width=True, column_config=table_config(d_status))
 
