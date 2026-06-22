@@ -486,7 +486,7 @@ with tabs[2]:
         if col:
             st.markdown(f"**{label}**")
             base_rel = relabel_aging(base, col)
-            t_dist = dist_table(base_rel, col, r_saldo)
+            t_dist = dist_table(base_rel, col, r_saldo).sort_values("saldo", ascending=False)
             st.dataframe(reorder_table(t_dist, col), use_container_width=True, column_config=table_config(t_dist))
 
             recup = base_rel.groupby(col, dropna=False)["monto_recuperado"].sum().reset_index()
