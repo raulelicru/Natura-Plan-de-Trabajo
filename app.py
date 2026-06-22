@@ -3,7 +3,9 @@ import re
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 
 from data_utils import guess_column, pct, read_any
 
@@ -596,101 +598,71 @@ with tabs[4]:
         c2.metric("Cuentas gestionadas", f"{cuentas_gestionadas:,}")
         c3.metric("Contactabilidad", f"{pct(contactadas, total_llamadas):.1f}%")
 
-        if v_ejecutivo:
-            st.markdown("**Gestiones por ejecutivo**")
-            vicidial_ejec = vicidial[~vicidial[v_ejecutivo].astype(str).str.upper().eq("VDAD")]
-            d_ejec = dist_table(vicidial_ejec, v_ejecutivo)
-            st.dataframe(d_ejec, use_container_width=True)
-            d_ejec_chart = d_ejec.sort_values("cuentas", ascending=True).copy()
-            d_ejec_chart[v_ejecutivo] = d_ejec_chart[v_ejecutivo].astype(str)
-            fig_ejec = px.bar(
-                d_ejec_chart,
-                x="cuentas",
-                y=v_ejecutivo,
-                orientation="h",
-                color="cuentas",
-                color_continuous_scale="Magma",
-                title="Gestiones por ejecutivo",
-            )
-            fig_ejec.update_layout(coloraxis_showscale=False, yaxis_title="")
-            fig_ejec.update_yaxes(type="category")
-            st.plotly_chart(fig_ejec, use_container_width=True)
+        st.markdown("**Contactación (Contacto vs. No contacto)**")
+        contacto_df = pd.DataFrame(
+            {
+                "Resultado": ["Contacto", "No contacto"],
+                "Llamadas": [contactadas, total_llamadas - contactadas],
+            }
+        )
+        fig_contacto = px.pie(
+            contacto_df,
+            names="Resultado",
+            values="Llamadas",
+            hole=0.45,
+            color="Resultado",
+            color_discrete_map={"Contacto": "#00CC96", "No contacto": "#EF553B"},
+            title="% de contactación",
+        )
+        fig_contacto.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig_contacto, use_container_width=True)
+
         if v_status_name:
-            st.markdown("**Resultados de llamada por status_name**")
-            d_status = dist_table(vicidial, v_status_name)
-            st.dataframe(d_status, use_container_width=True)
-            fig_status = px.pie(
-                d_status,
-                names=v_status_name,
-                values="cuentas",
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Safe,
-                title="Resultados de llamada (status_name)",
+            st.markdown("**Resultados por status_name**")
+            d_status = vicidial.groupby(v_status_name, dropna=False).size().reset_index(name="cantidad_llamadas")
+            contactos_status = (
+                vicidial.assign(__contactado__=contacto_mask)
+                .groupby(v_status_name, dropna=False)["__contactado__"]
+                .sum()
+                .reset_index(name="contactos")
             )
-            fig_status.update_traces(textinfo="percent+label")
-            st.plotly_chart(fig_status, use_container_width=True)
+            d_status = d_status.merge(contactos_status, on=v_status_name, how="left")
+            d_status["% Contacto"] = pct(d_status["contactos"], d_status["cantidad_llamadas"])
+            d_status = d_status.sort_values("cantidad_llamadas", ascending=False).drop(columns="contactos")
+            st.dataframe(d_status, use_container_width=True, column_config=table_config(d_status))
+
         if v_fecha:
             try:
                 horas = pd.to_datetime(vicidial[v_fecha], errors="coerce").dt.hour
-                dist_horario = horas.value_counts().sort_index().reset_index()
-                dist_horario.columns = ["Hora", "Llamadas"]
-                st.markdown("**Distribución de llamadas por horario**")
-                fig_hora = px.area(
-                    dist_horario,
-                    x="Hora",
-                    y="Llamadas",
-                    line_shape="spline",
-                    color_discrete_sequence=["#00CC96"],
-                    title="Llamadas por hora del día",
+                dist_horario = pd.DataFrame({"Hora": horas, "__contactado__": contacto_mask}).dropna(subset=["Hora"])
+                g_hora = dist_horario.groupby("Hora").agg(
+                    Llamadas=("__contactado__", "size"), Contactos=("__contactado__", "sum")
+                ).reset_index()
+                g_hora["% Contactación"] = pct(g_hora["Contactos"], g_hora["Llamadas"])
+                g_hora = g_hora.sort_values("Hora")
+                st.markdown("**Llamadas por hora del día**")
+                fig_hora = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_hora.add_trace(
+                    go.Bar(x=g_hora["Hora"], y=g_hora["Llamadas"], name="Llamadas", marker_color="#636EFA"),
+                    secondary_y=False,
                 )
-                fig_hora.update_traces(fill="tozeroy", opacity=0.6, line=dict(width=3))
+                fig_hora.add_trace(
+                    go.Scatter(
+                        x=g_hora["Hora"],
+                        y=g_hora["% Contactación"],
+                        name="% Contactación",
+                        mode="lines+markers",
+                        line=dict(color="#EF553B", width=3),
+                        marker=dict(size=8),
+                    ),
+                    secondary_y=True,
+                )
+                fig_hora.update_layout(title="Llamadas por hora del día y % de contactación", xaxis_title="Hora")
+                fig_hora.update_yaxes(title_text="Llamadas", secondary_y=False)
+                fig_hora.update_yaxes(title_text="% Contactación", ticksuffix="%", secondary_y=True)
                 st.plotly_chart(fig_hora, use_container_width=True)
             except Exception:
                 st.warning("No se pudo interpretar la columna de fecha/hora.")
-
-        if v_codigo and (r_aging or r_estado or r_segmento):
-            st.markdown("### Contactabilidad por temporalidad, estado y segmentación")
-            vic_join = vicidial.copy()
-            vic_join["__contactado__"] = contacto_mask
-            join_cols = [c for c in [r_aging, r_estado, r_segmento] if c]
-            vic_join = vic_join.merge(
-                remesa[[r_codigo] + join_cols].drop_duplicates(r_codigo),
-                left_on=v_codigo,
-                right_on=r_codigo,
-                how="left",
-            )
-
-            def contactabilidad_por(col, label):
-                g = relabel_aging(vic_join, col).groupby(col, dropna=False).agg(
-                    llamadas=(col, "size"), contactos=("__contactado__", "sum")
-                ).reset_index()
-                g["% Contactabilidad"] = pct(g["contactos"], g["llamadas"])
-                g = g.sort_values("% Contactabilidad", ascending=False)
-                st.markdown(f"**Contactabilidad por {label}**")
-                st.dataframe(reorder_table(g, col), use_container_width=True, column_config=table_config(g))
-                g_chart = g.sort_values("% Contactabilidad", ascending=True).copy()
-                g_chart[col] = g_chart[col].astype(str)
-                fig = px.bar(
-                    g_chart,
-                    x="% Contactabilidad",
-                    y=col,
-                    orientation="h",
-                    color="% Contactabilidad",
-                    color_continuous_scale="Teal",
-                    text="% Contactabilidad",
-                    title=f"% Contactabilidad por {label}",
-                )
-                fig.update_traces(texttemplate="%{text:.2f}%")
-                fig.update_layout(coloraxis_showscale=False, yaxis_title="")
-                fig.update_yaxes(type="category")
-                st.plotly_chart(fig, use_container_width=True)
-
-            if r_aging:
-                contactabilidad_por(r_aging, "temporalidad")
-            if r_estado:
-                contactabilidad_por(r_estado, "estado")
-            if r_segmento:
-                contactabilidad_por(r_segmento, "segmentación rep")
 
 # --- Gestión Automática (Reminder) --------------------------------------
 with tabs[5]:
