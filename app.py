@@ -220,6 +220,7 @@ def relabel_aging(df, col):
 # ---------------------------------------------------------------------------
 tabs = st.tabs(
     [
+        "Plan de Trabajo",
         "Dashboard Ejecutivo",
         "Inventario de Cartera",
         "Temporalidad",
@@ -289,8 +290,130 @@ def vicidial_contacto_mask(df):
     return pd.Series(False, index=df.index)
 
 
-# --- Dashboard Ejecutivo ---------------------------------------------------
+# --- Plan de Trabajo (resumen ejecutivo / metodología) ---------------------
 with tabs[0]:
+    st.subheader("Plan de Trabajo de Cobranza — Diagnóstico Basado en Datos")
+    st.markdown(
+        """
+Este diagnóstico integra **toda la cartera asignada** con cada canal de gestión
+(llamadas, SMS, recordatorios automáticos y pagos) en un solo modelo de datos,
+conectado por el código único de cliente. El objetivo es contar con evidencia
+verificable para sustentar las decisiones del plan de acción y dar seguimiento
+a su impacto semana a semana.
+"""
+    )
+
+    st.markdown("#### Metodología")
+    st.markdown(
+        """
+1. **Una sola fuente de verdad.** Remesa, Pagos, Vicidial, SMS y Reminder/IVR se
+   cruzan automáticamente por código de cliente — sin reconciliación manual.
+2. **Indicadores accionables.** Cada cifra (recuperación, contactabilidad,
+   efectividad por canal) está diseñada para activar una decisión específica,
+   no solo para reportar.
+3. **Línea base y seguimiento.** Los mismos indicadores se vuelven a medir cada
+   semana durante 4 semanas, lo que permite demostrar el impacto real de cada
+   ajuste operativo.
+"""
+    )
+
+    st.markdown("#### Lo que la cartera actual demuestra")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Cuentas bajo gestión", f"{total_cuentas:,}")
+    k2.metric("Saldo bajo diagnóstico", f"${total_saldo:,.0f}")
+    k3.metric("Recuperado a la fecha", f"${total_recuperado:,.0f}")
+    k4.metric("% Recuperación", f"{pct(total_recuperado, total_saldo):.2f}%")
+
+    fortalezas, oportunidades = [], []
+
+    if r_aging:
+        g_aging = relabel_aging(base, r_aging).groupby(r_aging, dropna=False).agg(
+            saldo=(r_saldo, "sum") if r_saldo else (r_aging, "size"),
+            recuperado=("monto_recuperado", "sum"),
+        ).reset_index()
+        g_aging["pct_rec"] = pct(g_aging["recuperado"], g_aging["saldo"])
+        if len(g_aging):
+            best = g_aging.sort_values("pct_rec", ascending=False).iloc[0]
+            worst = g_aging.sort_values("pct_rec", ascending=True).iloc[0]
+            fortalezas.append(
+                f"**{best[r_aging]}** es la temporalidad con mejor recuperación "
+                f"({best['pct_rec']:.2f}%) — evidencia de que la estrategia de gestión "
+                f"actual funciona cuando se aplica de forma oportuna."
+            )
+            if worst[r_aging] != best[r_aging]:
+                oportunidades.append(
+                    f"Replicar ese mismo enfoque en **{worst[r_aging]}** representa la "
+                    f"siguiente oportunidad de mayor retorno del plan."
+                )
+
+    if vicidial is not None and v_codigo and (v_contacto or v_status_name):
+        contacto_pct = pct(vicidial_contacto_mask(vicidial).sum(), len(vicidial))
+        fortalezas.append(
+            f"La gestión telefónica alcanza **{contacto_pct:.2f}%** de contactabilidad "
+            f"medida directamente desde Vicidial, con trazabilidad por ejecutivo, estado y "
+            f"segmentación."
+        )
+
+    canal_candidatos = []
+    if vicidial is not None and v_codigo:
+        canal_candidatos.append(("Llamadas (Vicidial)", pct(vicidial_contacto_mask(vicidial).sum(), len(vicidial)) if (v_contacto or v_status_name) else None))
+    if sms is not None and s_estado:
+        canal_candidatos.append(("SMS", pct(sms[s_estado].isin(st.session_state.get("s_entregado_statuses", [])).sum(), len(sms))))
+    if reminder is not None and rm_estado:
+        canal_candidatos.append(("Reminder/IVR", pct(reminder[rm_estado].isin(st.session_state.get("rm_contestada_statuses", [])).sum(), len(reminder))))
+    canal_candidatos = [c for c in canal_candidatos if c[1] is not None]
+    if canal_candidatos:
+        mejor_canal = max(canal_candidatos, key=lambda c: c[1])
+        fortalezas.append(
+            f"**{mejor_canal[0]}** es hoy el canal más efectivo ({mejor_canal[1]:.2f}%), "
+            f"una base sólida para priorizar la asignación de presupuesto y horas de gestión."
+        )
+
+    if r_segmento and r_saldo:
+        g_seg = base.groupby(r_segmento, dropna=False).agg(
+            saldo=(r_saldo, "sum"), recuperado=("monto_recuperado", "sum")
+        ).reset_index()
+        g_seg["pct_rec"] = pct(g_seg["recuperado"], g_seg["saldo"])
+        alto_saldo = g_seg[g_seg["saldo"] > g_seg["saldo"].median()]
+        if len(alto_saldo):
+            oportunidad_seg = alto_saldo.sort_values("pct_rec").iloc[0]
+            oportunidades.append(
+                f"El segmento **{oportunidad_seg[r_segmento]}** concentra saldo "
+                f"significativo con recuperación aún por capturar — siguiente paso "
+                f"recomendado del plan de acción."
+            )
+
+    c_fort, c_op = st.columns(2)
+    with c_fort:
+        st.markdown("##### Fortalezas demostradas con datos")
+        if fortalezas:
+            for f in fortalezas:
+                st.markdown(f"- {f}")
+        else:
+            st.caption("Sube las bases de Pagos y Vicidial para ver fortalezas cuantificadas.")
+    with c_op:
+        st.markdown("##### Próximos pasos del plan (oportunidades)")
+        if oportunidades:
+            for o in oportunidades:
+                st.markdown(f"- {o}")
+        else:
+            st.caption("Aún no hay suficiente información cruzada para priorizar siguientes pasos.")
+
+    st.markdown("#### Por qué este modelo es replicable")
+    st.markdown(
+        """
+El mismo proceso de cruce de bases, cálculo de indicadores y línea base se aplica
+a **cualquier remesa nueva, en cualquier periodo**, con resultados comparables.
+Esto convierte el diagnóstico en una capacidad permanente del equipo — no en un
+ejercicio aislado — y es la base para sostener la mejora de recuperación de
+forma consistente, periodo tras periodo. El detalle completo de cada análisis
+está disponible en las pestañas siguientes, y la línea base exportable en
+**Línea Base / Exportar**.
+"""
+    )
+
+# --- Dashboard Ejecutivo ---------------------------------------------------
+with tabs[1]:
     st.subheader("Resumen Ejecutivo")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Cuentas asignadas", f"{total_cuentas:,}")
@@ -338,7 +461,7 @@ with tabs[0]:
         st.plotly_chart(fig2, use_container_width=True)
 
 # --- Inventario --------------------------------------------------------
-with tabs[1]:
+with tabs[2]:
     st.subheader("Inventario General de Cartera")
     c1, c2, c3 = st.columns(3)
     c1.metric("Número de cuentas", f"{total_cuentas:,}")
@@ -387,7 +510,7 @@ with tabs[1]:
             st.plotly_chart(fig, use_container_width=True)
 
 # --- Temporalidad --------------------------------------------------------
-with tabs[2]:
+with tabs[3]:
     st.subheader("Análisis de Temporalidad (Aging de Morosidad)")
     if r_aging:
         t = dist_table(relabel_aging(base, r_aging), r_aging, r_saldo).rename(
@@ -429,7 +552,7 @@ with tabs[2]:
         st.warning("Mapea la columna de aging de morosidad en Remesa.")
 
 # --- Recuperación --------------------------------------------------------
-with tabs[3]:
+with tabs[4]:
     st.subheader("Análisis de Recuperación")
     c1, c2 = st.columns(2)
     c1.metric("Recuperación total", f"${total_recuperado:,.0f}")
@@ -453,7 +576,7 @@ with tabs[3]:
             st.caption("La gráfica de saldo asignado vs. recuperado está en la pestaña **Inventario de Cartera**.")
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
-with tabs[4]:
+with tabs[5]:
     st.subheader("Análisis de Gestión Telefónica (Vicidial)")
     if vicidial is None:
         st.info("Sube la base Vicidial para ver este análisis.")
@@ -564,7 +687,7 @@ with tabs[4]:
                 contactabilidad_por(r_segmento, "segmentación rep")
 
 # --- Gestión Automática (Reminder) --------------------------------------
-with tabs[5]:
+with tabs[6]:
     st.subheader("Análisis de Gestión Automática (Reminder / IVR)")
     if reminder is None:
         st.info("Sube la base Reminder/IVR para ver este análisis.")
@@ -599,7 +722,7 @@ with tabs[5]:
             st.plotly_chart(fig_rm, use_container_width=True)
 
 # --- Oportunidades --------------------------------------------------------
-with tabs[6]:
+with tabs[7]:
     st.subheader("Identificación de Oportunidades")
 
     def lowest_recovery(col):
@@ -661,7 +784,7 @@ with tabs[6]:
         )
 
 # --- Efectividad por Canal -----------------------------------------------
-with tabs[7]:
+with tabs[8]:
     st.subheader("Efectividad por Canal (Llamadas, SMS, Reminder)")
 
     canal_rows = []
@@ -756,7 +879,7 @@ with tabs[7]:
         st.info("Sube al menos una base de Vicidial, SMS o Reminder/IVR para comparar canales.")
 
 # --- Línea base / Exportar -----------------------------------------------
-with tabs[8]:
+with tabs[9]:
     st.subheader("Línea Base de Indicadores")
     st.caption("Indicadores a comparar durante las próximas 4 semanas del plan de acción.")
     resumen = {
