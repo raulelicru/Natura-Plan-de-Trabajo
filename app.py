@@ -600,12 +600,8 @@ with tabs[4]:
         cuentas_gestionadas = vicidial[v_codigo].nunique() if v_codigo else 0
         contacto_mask = vicidial_contacto_mask(vicidial)
         contactadas = contacto_mask.sum()
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total de llamadas", f"{total_llamadas:,}")
-        c2.metric("Cuentas gestionadas", f"{cuentas_gestionadas:,}")
-        c3.metric("Contactabilidad", f"{pct(contactadas, total_llamadas):.1f}%")
 
-        st.markdown("**Contactación (Contacto vs. No contacto) — clientes únicos, columna AO**")
+        cliente_cat = None
         if v_codigo and v_contacto:
             vic_ao = vicidial[[v_codigo, v_contacto]].copy()
             valor_ao = vic_ao[v_contacto].astype(str).str.strip().str.upper()
@@ -615,6 +611,18 @@ with tabs[4]:
             cliente_cat = vic_ao.groupby(v_codigo)["__categoria__"].agg(
                 lambda s: "Contacto" if (s == "Contacto").any() else "No contacto"
             )
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total de llamadas", f"{total_llamadas:,}")
+        c2.metric("Cuentas gestionadas", f"{cuentas_gestionadas:,}")
+        if cliente_cat is not None:
+            contactados_unicos = int((cliente_cat == "Contacto").sum())
+            c3.metric("Contactabilidad (clientes únicos)", f"{pct(contactados_unicos, len(cliente_cat)):.1f}%")
+        else:
+            c3.metric("Contactabilidad", f"{pct(contactadas, total_llamadas):.1f}%")
+
+        st.markdown("**Contactación (Contacto vs. No contacto) — clientes únicos, columna AO**")
+        if cliente_cat is not None:
             contacto_df = (
                 cliente_cat.value_counts()
                 .reindex(["Contacto", "No contacto"], fill_value=0)
@@ -636,17 +644,27 @@ with tabs[4]:
             st.caption("Mapea el código de cliente y la columna AO de contactabilidad para ver este indicador.")
 
         if v_status_name:
-            st.markdown("**Resultados por status_name**")
-            d_status = vicidial.groupby(v_status_name, dropna=False).size().reset_index(name="cantidad_llamadas")
-            contactos_status = (
-                vicidial.assign(__contactado__=contacto_mask)
-                .groupby(v_status_name, dropna=False)["__contactado__"]
-                .sum()
-                .reset_index(name="contactos")
-            )
-            d_status = d_status.merge(contactos_status, on=v_status_name, how="left")
-            d_status["% Contacto"] = pct(d_status["contactos"], d_status["cantidad_llamadas"])
-            d_status = d_status.sort_values("cantidad_llamadas", ascending=False).drop(columns="contactos")
+            st.markdown("**Resultados por status_name (solo estatus de contacto)**")
+            vic_contacto = vicidial[contacto_mask].copy()
+            if v_codigo and r_codigo and r_saldo:
+                vic_contacto = vic_contacto.merge(
+                    base[[r_codigo, r_saldo, "monto_recuperado"]].drop_duplicates(r_codigo),
+                    left_on=v_codigo,
+                    right_on=r_codigo,
+                    how="left",
+                )
+                d_status = vic_contacto.groupby(v_status_name, dropna=False).agg(
+                    llamadas_contactables=(v_status_name, "size"),
+                    saldo=(r_saldo, "sum"),
+                    recuperado=("monto_recuperado", "sum"),
+                ).reset_index()
+                d_status["% de Recuperación"] = pct(d_status["recuperado"], d_status["saldo"])
+                d_status = d_status.drop(columns=["saldo", "recuperado"])
+            else:
+                d_status = vic_contacto.groupby(v_status_name, dropna=False).size().reset_index(
+                    name="llamadas_contactables"
+                )
+            d_status = d_status.sort_values("llamadas_contactables", ascending=False)
             st.dataframe(d_status, use_container_width=True, column_config=table_config(d_status))
 
         if v_fecha:
