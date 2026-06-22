@@ -354,23 +354,36 @@ with tabs[1]:
     ]:
         if col:
             st.markdown(f"**{label}**")
-            t_dist = dist_table(relabel_aging(base, col), col, r_saldo)
+            base_rel = relabel_aging(base, col)
+            t_dist = dist_table(base_rel, col, r_saldo)
             st.dataframe(pct_first(t_dist), use_container_width=True, column_config=table_config(t_dist))
-            t_chart = t_dist.sort_values("saldo", ascending=True).copy()
+
+            recup = base_rel.groupby(col, dropna=False)["monto_recuperado"].sum().reset_index()
+            t_chart = t_dist.merge(recup, on=col, how="left")
+            t_chart["monto_recuperado"] = t_chart["monto_recuperado"].fillna(0)
+            t_chart = t_chart.sort_values("saldo", ascending=True).copy()
             t_chart[col] = t_chart[col].astype(str)
-            fig = px.bar(
-                t_chart,
-                x="saldo",
-                y=col,
-                orientation="h",
-                color="cuentas",
-                color_continuous_scale="Plasma",
-                text="saldo",
-                title=label,
+            t_melt = t_chart.melt(
+                id_vars=col,
+                value_vars=["saldo", "monto_recuperado"],
+                var_name="Concepto",
+                value_name="Monto",
             )
-            fig.update_traces(texttemplate="$%{text:,.0f}")
+            t_melt["Concepto"] = t_melt["Concepto"].map(
+                {"saldo": "Saldo asignado", "monto_recuperado": "Monto recuperado"}
+            )
+            fig = px.bar(
+                t_melt,
+                x="Monto",
+                y=col,
+                color="Concepto",
+                orientation="h",
+                barmode="group",
+                color_discrete_sequence=["#636EFA", "#00CC96"],
+                title=f"Inventario vs. recuperación — {label}",
+            )
             fig.update_yaxes(type="category")
-            fig.update_layout(coloraxis_showscale=False, yaxis_title="", xaxis_title="Saldo asignado")
+            fig.update_layout(yaxis_title="", xaxis_title="Monto ($)")
             st.plotly_chart(fig, use_container_width=True)
 
 # --- Temporalidad --------------------------------------------------------
@@ -437,22 +450,7 @@ with tabs[3]:
             st.markdown(f"**{label}**")
             g_show = g.sort_values("monto_recuperado", ascending=False)
             st.dataframe(pct_first(g_show), use_container_width=True, column_config=table_config(g_show))
-            g_chart = g_show.sort_values("pct_recuperacion", ascending=True).copy()
-            g_chart[col] = g_chart[col].astype(str)
-            fig = px.bar(
-                g_chart,
-                x="pct_recuperacion",
-                y=col,
-                orientation="h",
-                color="pct_recuperacion",
-                color_continuous_scale="Tealrose",
-                text="pct_recuperacion",
-                title=f"% Recuperación — {label}",
-            )
-            fig.update_traces(texttemplate="%{text:.2f}%")
-            fig.update_layout(xaxis_title="% Recuperación", yaxis_title="", coloraxis_showscale=False)
-            fig.update_yaxes(type="category")
-            st.plotly_chart(fig, use_container_width=True)
+            st.caption("La gráfica de saldo asignado vs. recuperado está en la pestaña **Inventario de Cartera**.")
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
 with tabs[4]:
