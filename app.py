@@ -518,9 +518,17 @@ with tabs[2]:
                 + (" (top 10)" if col in (r_estado, r_estado_residencia) else ""),
                 category_orders={col: t_chart[col].tolist()},
             )
-            fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-            fig.update_yaxes(type="category", autorange="reversed")
-            fig.update_layout(yaxis_title="", xaxis_title="Monto ($)")
+            fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside", textfont_size=13)
+            fig.update_yaxes(type="category", autorange="reversed", tickfont_size=14)
+            fig.update_xaxes(tickfont_size=13)
+            fig.update_layout(
+                yaxis_title="",
+                xaxis_title="Monto ($)",
+                height=max(420, 70 * t_chart[col].nunique()),
+                font=dict(size=14),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=10, r=10, t=80, b=10),
+            )
             st.plotly_chart(fig, use_container_width=True)
 
 # --- Temporalidad --------------------------------------------------------
