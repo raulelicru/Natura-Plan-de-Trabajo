@@ -7,6 +7,9 @@ import streamlit as st
 
 from data_utils import guess_column, pct, read_any
 
+px.defaults.template = "plotly_white"
+px.defaults.color_discrete_sequence = px.colors.qualitative.Bold
+
 st.set_page_config(page_title="Diagnóstico de Cartera", layout="wide")
 st.title("Diagnóstico Inicial de Cartera")
 st.caption(
@@ -296,22 +299,38 @@ with tabs[0]:
     c4.metric("% Recuperación", f"{pct(total_recuperado, total_saldo):.1f}%")
 
     if r_estado_residencia:
-        top_estados = dist_table(base, r_estado_residencia, r_saldo).sort_values("saldo", ascending=False).head(15)
+        top_estados = dist_table(base, r_estado_residencia, r_saldo).sort_values("saldo", ascending=True).tail(15)
         fig = px.bar(
-            top_estados, x=r_estado_residencia, y="saldo", title="Saldo asignado por estado (top 15)"
+            top_estados,
+            x="saldo",
+            y=r_estado_residencia,
+            orientation="h",
+            color="saldo",
+            color_continuous_scale="Sunset",
+            text="saldo",
+            title="Saldo asignado por estado (top 15)",
         )
-        fig.update_xaxes(categoryorder="total descending")
+        fig.update_traces(texttemplate="$%{text:,.0f}")
+        fig.update_layout(yaxis_title="", xaxis_title="Saldo asignado", coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
     elif r_estado:
-        fig = px.bar(dist_table(base, r_estado, r_saldo), x=r_estado, y="saldo", title="Saldo asignado por estado")
+        d = dist_table(base, r_estado, r_saldo).sort_values("saldo", ascending=True)
+        fig = px.bar(
+            d, x="saldo", y=r_estado, orientation="h", color="saldo",
+            color_continuous_scale="Sunset", title="Saldo asignado por estado",
+        )
+        fig.update_layout(coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
     if r_aging:
         fig2 = px.pie(
             dist_table(relabel_aging(base, r_aging), r_aging, r_saldo),
             names=r_aging,
             values="saldo",
+            hole=0.45,
+            color_discrete_sequence=px.colors.qualitative.Vivid,
             title="Saldo por temporalidad",
         )
+        fig2.update_traces(textinfo="percent+label", pull=0.02)
         st.plotly_chart(fig2, use_container_width=True)
 
 # --- Inventario --------------------------------------------------------
@@ -333,7 +352,15 @@ with tabs[1]:
             st.markdown(f"**{label}**")
             t_dist = dist_table(relabel_aging(base, col), col, r_saldo)
             st.dataframe(pct_first(t_dist), use_container_width=True, column_config=table_config(t_dist))
-            fig = px.bar(t_dist.sort_values("saldo", ascending=False), x=col, y="saldo", title=label)
+            fig = px.treemap(
+                t_dist,
+                path=[col],
+                values="saldo",
+                color="cuentas",
+                color_continuous_scale="Plasma",
+                title=label,
+            )
+            fig.update_traces(texttemplate="%{label}<br>$%{value:,.0f}")
             st.plotly_chart(fig, use_container_width=True)
 
 # --- Temporalidad --------------------------------------------------------
@@ -345,11 +372,28 @@ with tabs[2]:
         )
         t_show = t[["% Participación", "Temporalidad", "Número de cuentas", "Saldo asignado"]]
         st.dataframe(t_show, use_container_width=True, column_config=table_config(t_show))
-        t_chart = t.copy()
+        t_chart = t.sort_values("Saldo asignado", ascending=False).copy()
         t_chart["Etiqueta"] = t_chart["% Participación"].map(lambda v: f"{v:.2f}%")
-        st.plotly_chart(
-            px.bar(t_chart, x="Temporalidad", y="Saldo asignado", text="Etiqueta"), use_container_width=True
+        fig_funnel = px.funnel(
+            t_chart,
+            x="Saldo asignado",
+            y="Temporalidad",
+            color="Temporalidad",
+            color_discrete_sequence=px.colors.qualitative.Prism,
+            title="Saldo asignado por temporalidad",
         )
+        st.plotly_chart(fig_funnel, use_container_width=True)
+        fig_line = px.line(
+            t.sort_values("Temporalidad"),
+            x="Temporalidad",
+            y="% Participación",
+            markers=True,
+            color_discrete_sequence=["#EF553B"],
+            title="% de participación por temporalidad",
+        )
+        fig_line.update_traces(line=dict(width=4), marker=dict(size=10))
+        fig_line.update_layout(yaxis_ticksuffix="%")
+        st.plotly_chart(fig_line, use_container_width=True)
     else:
         st.warning("Mapea la columna de aging de morosidad en Remesa.")
 
@@ -375,9 +419,20 @@ with tabs[3]:
             st.markdown(f"**{label}**")
             g_show = g.sort_values("monto_recuperado", ascending=False)
             st.dataframe(pct_first(g_show), use_container_width=True, column_config=table_config(g_show))
-            st.plotly_chart(
-                px.bar(g_show, x=col, y="monto_recuperado", title=label), use_container_width=True
+            g_chart = g_show.sort_values("pct_recuperacion", ascending=True)
+            fig = px.bar(
+                g_chart,
+                x="pct_recuperacion",
+                y=col,
+                orientation="h",
+                color="pct_recuperacion",
+                color_continuous_scale="Tealrose",
+                text="pct_recuperacion",
+                title=f"% Recuperación — {label}",
             )
+            fig.update_traces(texttemplate="%{text:.2f}%")
+            fig.update_layout(xaxis_title="% Recuperación", yaxis_title="", coloraxis_showscale=False)
+            st.plotly_chart(fig, use_container_width=True)
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
 with tabs[4]:
@@ -396,17 +451,49 @@ with tabs[4]:
 
         if v_ejecutivo:
             st.markdown("**Gestiones por ejecutivo**")
-            st.dataframe(dist_table(vicidial, v_ejecutivo), use_container_width=True)
+            d_ejec = dist_table(vicidial, v_ejecutivo)
+            st.dataframe(d_ejec, use_container_width=True)
+            fig_ejec = px.bar(
+                d_ejec.sort_values("cuentas", ascending=True),
+                x="cuentas",
+                y=v_ejecutivo,
+                orientation="h",
+                color="cuentas",
+                color_continuous_scale="Magma",
+                title="Gestiones por ejecutivo",
+            )
+            fig_ejec.update_layout(coloraxis_showscale=False, yaxis_title="")
+            st.plotly_chart(fig_ejec, use_container_width=True)
         if v_status_name:
             st.markdown("**Resultados de llamada por status_name**")
-            st.dataframe(dist_table(vicidial, v_status_name), use_container_width=True)
+            d_status = dist_table(vicidial, v_status_name)
+            st.dataframe(d_status, use_container_width=True)
+            fig_status = px.pie(
+                d_status,
+                names=v_status_name,
+                values="cuentas",
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Safe,
+                title="Resultados de llamada (status_name)",
+            )
+            fig_status.update_traces(textinfo="percent+label")
+            st.plotly_chart(fig_status, use_container_width=True)
         if v_fecha:
             try:
                 horas = pd.to_datetime(vicidial[v_fecha], errors="coerce").dt.hour
                 dist_horario = horas.value_counts().sort_index().reset_index()
                 dist_horario.columns = ["Hora", "Llamadas"]
                 st.markdown("**Distribución de llamadas por horario**")
-                st.plotly_chart(px.bar(dist_horario, x="Hora", y="Llamadas"), use_container_width=True)
+                fig_hora = px.area(
+                    dist_horario,
+                    x="Hora",
+                    y="Llamadas",
+                    line_shape="spline",
+                    color_discrete_sequence=["#00CC96"],
+                    title="Llamadas por hora del día",
+                )
+                fig_hora.update_traces(fill="tozeroy", opacity=0.6, line=dict(width=3))
+                st.plotly_chart(fig_hora, use_container_width=True)
             except Exception:
                 st.warning("No se pudo interpretar la columna de fecha/hora.")
 
@@ -430,7 +517,18 @@ with tabs[4]:
                 g = g.sort_values("% Contactabilidad", ascending=False)
                 st.markdown(f"**Contactabilidad por {label}**")
                 st.dataframe(pct_first(g), use_container_width=True, column_config=table_config(g))
-                fig = px.bar(g, x=col, y="% Contactabilidad", title=f"% Contactabilidad por {label}")
+                fig = px.bar(
+                    g.sort_values("% Contactabilidad", ascending=True),
+                    x="% Contactabilidad",
+                    y=col,
+                    orientation="h",
+                    color="% Contactabilidad",
+                    color_continuous_scale="Teal",
+                    text="% Contactabilidad",
+                    title=f"% Contactabilidad por {label}",
+                )
+                fig.update_traces(texttemplate="%{text:.2f}%")
+                fig.update_layout(coloraxis_showscale=False, yaxis_title="")
                 st.plotly_chart(fig, use_container_width=True)
 
             if r_aging:
@@ -462,7 +560,18 @@ with tabs[5]:
             st.metric("Duración promedio de llamadas", f"{dur.mean():.1f}")
         if rm_estado:
             st.markdown("**Resultados por estado de llamada**")
-            st.dataframe(dist_table(reminder, rm_estado), use_container_width=True)
+            d_rm = dist_table(reminder, rm_estado)
+            st.dataframe(d_rm, use_container_width=True)
+            fig_rm = px.pie(
+                d_rm,
+                names=rm_estado,
+                values="cuentas",
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Pastel,
+                title="Resultados por estado de llamada (Reminder/IVR)",
+            )
+            fig_rm.update_traces(textinfo="percent+label")
+            st.plotly_chart(fig_rm, use_container_width=True)
 
 # --- Oportunidades --------------------------------------------------------
 with tabs[6]:
@@ -570,10 +679,15 @@ with tabs[7]:
     if canal_rows:
         canal_df = pd.DataFrame(canal_rows)
         st.dataframe(canal_df, use_container_width=True)
-        st.plotly_chart(
-            px.bar(canal_df, x="Canal", y="% Efectividad", text="% Efectividad", title="% Efectividad por canal"),
-            use_container_width=True,
+        fig_canal = px.funnel(
+            canal_df.sort_values("% Efectividad", ascending=False),
+            x="% Efectividad",
+            y="Canal",
+            color="Canal",
+            color_discrete_sequence=px.colors.qualitative.Bold,
+            title="% Efectividad por canal",
         )
+        st.plotly_chart(fig_canal, use_container_width=True)
 
         st.markdown("**Recuperación asociada a cuentas gestionadas por canal**")
         rec_rows = []
@@ -590,6 +704,20 @@ with tabs[7]:
         if rec_rows:
             rec_df = pd.DataFrame(rec_rows)
             st.dataframe(rec_df, use_container_width=True, column_config=money_config(rec_df))
+            rec_melt = rec_df.melt(
+                id_vars="Canal", value_vars=["Saldo asignado", "Monto recuperado"],
+                var_name="Concepto", value_name="Monto",
+            )
+            fig_rec = px.bar(
+                rec_melt,
+                x="Canal",
+                y="Monto",
+                color="Concepto",
+                barmode="group",
+                color_discrete_sequence=["#636EFA", "#00CC96"],
+                title="Saldo asignado vs. recuperado por canal",
+            )
+            st.plotly_chart(fig_rec, use_container_width=True)
     else:
         st.info("Sube al menos una base de Vicidial, SMS o Reminder/IVR para comparar canales.")
 
