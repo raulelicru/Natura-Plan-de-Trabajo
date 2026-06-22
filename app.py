@@ -274,11 +274,19 @@ def table_config(df):
     return {**money_config(df), **pct_config(df)}
 
 
-def pct_first(df):
-    """Mueve las columnas de porcentaje al inicio de la tabla."""
-    pct_cols = [c for c in df.columns if is_pct_col(c)]
-    other_cols = [c for c in df.columns if c not in pct_cols]
-    return df[pct_cols + other_cols]
+TABLE_COLUMN_ORDER = [
+    "cuentas", "pct_cuentas",
+    "saldo", "pct_saldo",
+    "llamadas", "contactos", "% Contactabilidad",
+    "saldo_asignado", "monto_recuperado", "pct_recuperacion",
+]
+
+
+def reorder_table(df, col):
+    """Ordena: columna de categoría, cuentas, % cuentas, saldo, % saldo (y variantes)."""
+    ordered = [col] + [c for c in TABLE_COLUMN_ORDER if c in df.columns]
+    rest = [c for c in df.columns if c not in ordered]
+    return df[ordered + rest]
 
 
 def vicidial_contacto_mask(df):
@@ -479,7 +487,7 @@ with tabs[2]:
             st.markdown(f"**{label}**")
             base_rel = relabel_aging(base, col)
             t_dist = dist_table(base_rel, col, r_saldo)
-            st.dataframe(pct_first(t_dist), use_container_width=True, column_config=table_config(t_dist))
+            st.dataframe(reorder_table(t_dist, col), use_container_width=True, column_config=table_config(t_dist))
 
             recup = base_rel.groupby(col, dropna=False)["monto_recuperado"].sum().reset_index()
             t_chart = t_dist.merge(recup, on=col, how="left")
@@ -514,9 +522,15 @@ with tabs[3]:
     st.subheader("Análisis de Temporalidad (Aging de Morosidad)")
     if r_aging:
         t = dist_table(relabel_aging(base, r_aging), r_aging, r_saldo).rename(
-            columns={r_aging: "Temporalidad", "cuentas": "Número de cuentas", "saldo": "Saldo asignado", "pct_saldo": "% Participación"}
+            columns={
+                r_aging: "Temporalidad",
+                "cuentas": "Número de cuentas",
+                "pct_cuentas": "% Cuentas",
+                "saldo": "Saldo asignado",
+                "pct_saldo": "% Participación",
+            }
         )
-        t_show = t[["% Participación", "Temporalidad", "Número de cuentas", "Saldo asignado"]]
+        t_show = t[["Temporalidad", "Número de cuentas", "% Cuentas", "Saldo asignado", "% Participación"]]
         st.dataframe(t_show, use_container_width=True, column_config=table_config(t_show))
         t_chart = t.sort_values("Saldo asignado", ascending=False).copy()
         t_chart["Etiqueta"] = t_chart["% Participación"].map(lambda v: f"{v:.2f}%")
@@ -572,7 +586,7 @@ with tabs[4]:
             g["pct_recuperacion"] = pct(g["monto_recuperado"], g["saldo_asignado"])
             st.markdown(f"**{label}**")
             g_show = g.sort_values("monto_recuperado", ascending=False)
-            st.dataframe(pct_first(g_show), use_container_width=True, column_config=table_config(g_show))
+            st.dataframe(reorder_table(g_show, col), use_container_width=True, column_config=table_config(g_show))
             st.caption("La gráfica de saldo asignado vs. recuperado está en la pestaña **Inventario de Cartera**.")
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
@@ -661,7 +675,7 @@ with tabs[5]:
                 g["% Contactabilidad"] = pct(g["contactos"], g["llamadas"])
                 g = g.sort_values("% Contactabilidad", ascending=False)
                 st.markdown(f"**Contactabilidad por {label}**")
-                st.dataframe(pct_first(g), use_container_width=True, column_config=table_config(g))
+                st.dataframe(reorder_table(g, col), use_container_width=True, column_config=table_config(g))
                 g_chart = g.sort_values("% Contactabilidad", ascending=True).copy()
                 g_chart[col] = g_chart[col].astype(str)
                 fig = px.bar(
@@ -736,16 +750,16 @@ with tabs[7]:
     if r_estado:
         st.markdown("**Estados con menor recuperación**")
         t_low = lowest_recovery(r_estado).head(10)
-        st.dataframe(pct_first(t_low), use_container_width=True, column_config=table_config(t_low))
+        st.dataframe(reorder_table(t_low, r_estado), use_container_width=True, column_config=table_config(t_low))
     if r_aging:
         st.markdown("**Temporalidades con menor recuperación**")
         t_low = lowest_recovery(r_aging).head(10)
-        st.dataframe(pct_first(t_low), use_container_width=True, column_config=table_config(t_low))
+        st.dataframe(reorder_table(t_low, r_aging), use_container_width=True, column_config=table_config(t_low))
     if r_segmento:
         g = lowest_recovery(r_segmento)
         st.markdown("**Segmentos con mayor potencial de recuperación** (alto saldo, baja recuperación)")
         t_seg = g[g["saldo_asignado"] > g["saldo_asignado"].median()].sort_values("pct_recuperacion").head(10)
-        st.dataframe(pct_first(t_seg), use_container_width=True, column_config=table_config(t_seg))
+        st.dataframe(reorder_table(t_seg, r_segmento), use_container_width=True, column_config=table_config(t_seg))
     if vicidial is not None and v_ejecutivo and (v_contacto or v_status_name):
         st.markdown("**Ejecutivos con mejor desempeño** (mayor contactabilidad)")
         vic_perf = vicidial.copy()
