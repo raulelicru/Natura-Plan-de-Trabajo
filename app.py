@@ -487,14 +487,14 @@ with tabs[2]:
             st.markdown(f"**{label}**")
             base_rel = relabel_aging(base, col)
             t_dist = dist_table(base_rel, col, r_saldo).sort_values("saldo", ascending=False)
+            if col in (r_estado, r_estado_residencia):
+                t_dist = t_dist.head(10)
             st.dataframe(reorder_table(t_dist, col), use_container_width=True, column_config=table_config(t_dist))
 
             recup = base_rel.groupby(col, dropna=False)["monto_recuperado"].sum().reset_index()
             t_chart = t_dist.merge(recup, on=col, how="left")
             t_chart["monto_recuperado"] = t_chart["monto_recuperado"].fillna(0)
             t_chart = t_chart.sort_values("saldo", ascending=False).copy()
-            if col in (r_estado, r_estado_residencia):
-                t_chart = t_chart.head(10)
             t_chart[col] = t_chart[col].astype(str)
             t_melt = t_chart.melt(
                 id_vars=col,
