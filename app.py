@@ -430,7 +430,7 @@ with tabs[1]:
     c4.metric("% Recuperación", f"{pct(total_recuperado, total_saldo):.1f}%")
 
     if r_estado_residencia:
-        top_estados = dist_table(base, r_estado_residencia, r_saldo).sort_values("saldo", ascending=True).tail(15)
+        top_estados = dist_table(base, r_estado_residencia, r_saldo).sort_values("saldo", ascending=True).tail(10)
         top_estados[r_estado_residencia] = top_estados[r_estado_residencia].astype(str)
         fig = px.bar(
             top_estados,
@@ -440,7 +440,7 @@ with tabs[1]:
             color="saldo",
             color_continuous_scale="Sunset",
             text="saldo",
-            title="Saldo asignado por estado (top 15)",
+            title="Saldo asignado por estado (top 10)",
         )
         fig.update_traces(texttemplate="$%{text:,.0f}")
         fig.update_layout(yaxis_title="", xaxis_title="Saldo asignado", coloraxis_showscale=False)
