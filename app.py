@@ -12,8 +12,8 @@ from data_utils import guess_column, pct, read_any
 px.defaults.template = "plotly_white"
 px.defaults.color_discrete_sequence = px.colors.qualitative.Bold
 
-st.set_page_config(page_title="Diagnóstico de Cartera", layout="wide")
-st.title("Diagnóstico Inicial de Cartera")
+st.set_page_config(page_title="Resultado de Gestión", layout="wide")
+st.title("Resultado de Gestión")
 st.caption(
     "Línea base de recuperación, contactabilidad y productividad operativa "
     "para el plan de acción de cobranza."
