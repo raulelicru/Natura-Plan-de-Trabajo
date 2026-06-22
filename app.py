@@ -1,4 +1,6 @@
 """Diagnóstico Inicial de Cartera - Plan de Acción de Cobranza."""
+import re
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -188,6 +190,29 @@ base["sms_enviados"] = base.get("sms_enviados", 0).fillna(0)
 base["envios_reminder"] = base.get("envios_reminder", 0).fillna(0)
 
 # ---------------------------------------------------------------------------
+# Etiquetas de temporalidad (Tem-1, Tem-2, Tem-3...)
+# ---------------------------------------------------------------------------
+AGING_MAP = {}
+if r_aging:
+
+    def _aging_sort_key(v):
+        s = str(v)
+        m = re.search(r"-?\d+(\.\d+)?", s)
+        return (0, float(m.group())) if m else (1, s)
+
+    _uniques = sorted(base[r_aging].dropna().unique(), key=_aging_sort_key)
+    AGING_MAP = {v: f"Tem-{i + 1}" for i, v in enumerate(_uniques)}
+
+
+def relabel_aging(df, col):
+    """Reemplaza los valores crudos de aging_de_morosidad por Tem-1, Tem-2, etc."""
+    if col == r_aging and AGING_MAP:
+        df = df.copy()
+        df[col] = df[col].map(AGING_MAP).fillna(df[col])
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 tabs = st.tabs(
@@ -233,6 +258,25 @@ def money_config(df):
     }
 
 
+def is_pct_col(c):
+    return "%" in c or c.lower().startswith("pct_")
+
+
+def pct_config(df):
+    return {c: st.column_config.NumberColumn(format="%.2f%%") for c in df.columns if is_pct_col(c)}
+
+
+def table_config(df):
+    return {**money_config(df), **pct_config(df)}
+
+
+def pct_first(df):
+    """Mueve las columnas de porcentaje al inicio de la tabla."""
+    pct_cols = [c for c in df.columns if is_pct_col(c)]
+    other_cols = [c for c in df.columns if c not in pct_cols]
+    return df[pct_cols + other_cols]
+
+
 def vicidial_contacto_mask(df):
     """Máscara de contacto efectivo: prioriza la columna de contactabilidad (AO) sobre status_name."""
     if v_contacto:
@@ -262,7 +306,12 @@ with tabs[0]:
         fig = px.bar(dist_table(base, r_estado, r_saldo), x=r_estado, y="saldo", title="Saldo asignado por estado")
         st.plotly_chart(fig, use_container_width=True)
     if r_aging:
-        fig2 = px.pie(dist_table(base, r_aging, r_saldo), names=r_aging, values="saldo", title="Saldo por temporalidad")
+        fig2 = px.pie(
+            dist_table(relabel_aging(base, r_aging), r_aging, r_saldo),
+            names=r_aging,
+            values="saldo",
+            title="Saldo por temporalidad",
+        )
         st.plotly_chart(fig2, use_container_width=True)
 
 # --- Inventario --------------------------------------------------------
@@ -282,18 +331,20 @@ with tabs[1]:
     ]:
         if col:
             st.markdown(f"**{label}**")
-            t_dist = dist_table(base, col, r_saldo)
-            st.dataframe(t_dist, use_container_width=True, column_config=money_config(t_dist))
+            t_dist = dist_table(relabel_aging(base, col), col, r_saldo)
+            st.dataframe(pct_first(t_dist), use_container_width=True, column_config=table_config(t_dist))
+            fig = px.bar(t_dist.sort_values("saldo", ascending=False), x=col, y="saldo", title=label)
+            st.plotly_chart(fig, use_container_width=True)
 
 # --- Temporalidad --------------------------------------------------------
 with tabs[2]:
     st.subheader("Análisis de Temporalidad (Aging de Morosidad)")
     if r_aging:
-        t = dist_table(base, r_aging, r_saldo).rename(
+        t = dist_table(relabel_aging(base, r_aging), r_aging, r_saldo).rename(
             columns={r_aging: "Temporalidad", "cuentas": "Número de cuentas", "saldo": "Saldo asignado", "pct_saldo": "% Participación"}
         )
-        t_show = t[["Temporalidad", "Número de cuentas", "Saldo asignado", "% Participación"]]
-        st.dataframe(t_show, use_container_width=True, column_config=money_config(t_show))
+        t_show = t[["% Participación", "Temporalidad", "Número de cuentas", "Saldo asignado"]]
+        st.dataframe(t_show, use_container_width=True, column_config=table_config(t_show))
         t_chart = t.copy()
         t_chart["Etiqueta"] = t_chart["% Participación"].map(lambda v: f"{v:.2f}%")
         st.plotly_chart(
@@ -316,14 +367,17 @@ with tabs[3]:
         ("Recuperación por segmentación rep", r_segmento),
     ]:
         if col:
-            g = base.groupby(col, dropna=False).agg(
+            g = relabel_aging(base, col).groupby(col, dropna=False).agg(
                 saldo_asignado=(r_saldo, "sum") if r_saldo else (col, "size"),
                 monto_recuperado=("monto_recuperado", "sum"),
             ).reset_index()
             g["pct_recuperacion"] = pct(g["monto_recuperado"], g["saldo_asignado"])
             st.markdown(f"**{label}**")
             g_show = g.sort_values("monto_recuperado", ascending=False)
-            st.dataframe(g_show, use_container_width=True, column_config=money_config(g_show))
+            st.dataframe(pct_first(g_show), use_container_width=True, column_config=table_config(g_show))
+            st.plotly_chart(
+                px.bar(g_show, x=col, y="monto_recuperado", title=label), use_container_width=True
+            )
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
 with tabs[4]:
@@ -369,12 +423,13 @@ with tabs[4]:
             )
 
             def contactabilidad_por(col, label):
-                g = vic_join.groupby(col, dropna=False).agg(
+                g = relabel_aging(vic_join, col).groupby(col, dropna=False).agg(
                     llamadas=(col, "size"), contactos=("__contactado__", "sum")
                 ).reset_index()
                 g["% Contactabilidad"] = pct(g["contactos"], g["llamadas"])
+                g = g.sort_values("% Contactabilidad", ascending=False)
                 st.markdown(f"**Contactabilidad por {label}**")
-                st.dataframe(g.sort_values("% Contactabilidad", ascending=False), use_container_width=True)
+                st.dataframe(pct_first(g), use_container_width=True, column_config=table_config(g))
                 fig = px.bar(g, x=col, y="% Contactabilidad", title=f"% Contactabilidad por {label}")
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -414,7 +469,7 @@ with tabs[6]:
     st.subheader("Identificación de Oportunidades")
 
     def lowest_recovery(col):
-        g = base.groupby(col, dropna=False).agg(
+        g = relabel_aging(base, col).groupby(col, dropna=False).agg(
             saldo_asignado=(r_saldo, "sum") if r_saldo else (col, "size"),
             monto_recuperado=("monto_recuperado", "sum"),
         ).reset_index()
@@ -424,16 +479,16 @@ with tabs[6]:
     if r_estado:
         st.markdown("**Estados con menor recuperación**")
         t_low = lowest_recovery(r_estado).head(10)
-        st.dataframe(t_low, use_container_width=True, column_config=money_config(t_low))
+        st.dataframe(pct_first(t_low), use_container_width=True, column_config=table_config(t_low))
     if r_aging:
         st.markdown("**Temporalidades con menor recuperación**")
         t_low = lowest_recovery(r_aging).head(10)
-        st.dataframe(t_low, use_container_width=True, column_config=money_config(t_low))
+        st.dataframe(pct_first(t_low), use_container_width=True, column_config=table_config(t_low))
     if r_segmento:
         g = lowest_recovery(r_segmento)
         st.markdown("**Segmentos con mayor potencial de recuperación** (alto saldo, baja recuperación)")
         t_seg = g[g["saldo_asignado"] > g["saldo_asignado"].median()].sort_values("pct_recuperacion").head(10)
-        st.dataframe(t_seg, use_container_width=True, column_config=money_config(t_seg))
+        st.dataframe(pct_first(t_seg), use_container_width=True, column_config=table_config(t_seg))
     if vicidial is not None and v_ejecutivo and (v_contacto or v_status_name):
         st.markdown("**Ejecutivos con mejor desempeño** (mayor contactabilidad)")
         vic_perf = vicidial.copy()
