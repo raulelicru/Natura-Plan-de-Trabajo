@@ -487,7 +487,6 @@ with tabs[2]:
 
     for label, col in [
         ("Distribución por temporalidad", r_aging),
-        ("Distribución por estado", r_estado),
         ("Distribución por estado de residencia", r_estado_residencia),
         ("Distribución por camino de crecimiento", r_camino),
         ("Distribución por segmentación rep", r_segmento),
