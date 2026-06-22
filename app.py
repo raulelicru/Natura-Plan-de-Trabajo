@@ -493,6 +493,8 @@ with tabs[2]:
             t_chart = t_dist.merge(recup, on=col, how="left")
             t_chart["monto_recuperado"] = t_chart["monto_recuperado"].fillna(0)
             t_chart = t_chart.sort_values("saldo", ascending=False).copy()
+            if col in (r_estado, r_estado_residencia):
+                t_chart = t_chart.head(10)
             t_chart[col] = t_chart[col].astype(str)
             t_melt = t_chart.melt(
                 id_vars=col,
@@ -512,7 +514,8 @@ with tabs[2]:
                 barmode="group",
                 text="Monto",
                 color_discrete_sequence=["#636EFA", "#00CC96"],
-                title=f"Inventario vs. recuperación — {label}",
+                title=f"Inventario vs. recuperación — {label}"
+                + (" (top 10)" if col in (r_estado, r_estado_residencia) else ""),
                 category_orders={col: t_chart[col].tolist()},
             )
             fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
