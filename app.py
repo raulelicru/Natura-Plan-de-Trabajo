@@ -551,7 +551,34 @@ with tabs[3]:
             g["pct_recuperacion"] = pct(g["monto_recuperado"], g["saldo_asignado"])
             st.markdown(f"**{label}**")
             g_show = g.sort_values("monto_recuperado", ascending=False)
+            if col in (r_estado, r_estado_residencia):
+                g_show = g_show.head(10)
             st.dataframe(reorder_table(g_show, col), use_container_width=True, column_config=table_config(g_show))
+
+            g_chart = g_show.copy()
+            g_chart[col] = g_chart[col].astype(str)
+            fig_pct = px.bar(
+                g_chart,
+                x="pct_recuperacion",
+                y=col,
+                orientation="h",
+                color="pct_recuperacion",
+                color_continuous_scale="Tealgrn",
+                text="pct_recuperacion",
+                title=f"% de recuperación — {label}",
+                category_orders={col: g_chart[col].tolist()},
+            )
+            fig_pct.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
+            fig_pct.update_yaxes(type="category", autorange="reversed", tickfont_size=14)
+            fig_pct.update_layout(
+                yaxis_title="",
+                xaxis_title="% Recuperación",
+                coloraxis_showscale=False,
+                height=max(380, 60 * g_chart[col].nunique()),
+                font=dict(size=13),
+                margin=dict(l=10, r=10, t=60, b=10),
+            )
+            st.plotly_chart(fig_pct, use_container_width=True)
             st.caption("La gráfica de saldo asignado vs. recuperado está en la pestaña **Inventario de Cartera**.")
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
