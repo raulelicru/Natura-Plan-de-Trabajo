@@ -39,7 +39,7 @@ st.markdown(
     f"""
     <style>
     .stApp {{
-        background-color: {NATURA_CREAM};
+        background-color: #FFFFFF;
     }}
     h1, h2, h3 {{
         color: {NATURA_GREEN_DARK} !important;
