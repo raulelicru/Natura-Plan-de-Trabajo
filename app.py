@@ -278,19 +278,53 @@ def relabel_aging(df, col):
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
-tabs = st.tabs(
-    [
-        "Plan de Trabajo",
-        "Dashboard Ejecutivo",
-        "Asignado de Cartera",
-        "Recuperación",
-        "Gestión Telefónica",
-        "Gestión Automática",
-        "Oportunidades",
-        "Efectividad por Canal",
-        "Línea Base / Exportar",
-    ]
-)
+TAB_LABELS = [
+    "Plan de Trabajo",
+    "Dashboard Ejecutivo",
+    "Asignado de Cartera",
+    "Recuperación",
+    "Gestión Telefónica",
+    "Gestión Automática",
+    "Oportunidades",
+    "Efectividad por Canal",
+    "Línea Base / Exportar",
+]
+tabs = st.tabs(TAB_LABELS)
+
+# ---------------------------------------------------------------------------
+# Registro de tablas y gráficas para el reporte HTML exportable: se
+# intercepta st.dataframe / st.plotly_chart para capturar cada elemento
+# junto con la pestaña en la que aparece, sin tocar cada llamada existente.
+# ---------------------------------------------------------------------------
+REPORT_SECTIONS = []
+_current_section = {"name": ""}
+_orig_st_dataframe = st.dataframe
+_orig_st_plotly_chart = st.plotly_chart
+_orig_st_subheader = st.subheader
+
+
+def _set_report_section(name):
+    _current_section["name"] = name
+
+
+def _recorded_dataframe(df, *args, **kwargs):
+    REPORT_SECTIONS.append({"section": _current_section["name"], "kind": "table", "obj": df.copy(), "title": None})
+    return _orig_st_dataframe(df, *args, **kwargs)
+
+
+def _recorded_plotly_chart(fig, *args, **kwargs):
+    REPORT_SECTIONS.append({"section": _current_section["name"], "kind": "chart", "obj": fig, "title": None})
+    return _orig_st_plotly_chart(fig, *args, **kwargs)
+
+
+def _recorded_subheader(text, *args, **kwargs):
+    REPORT_SECTIONS.append({"section": _current_section["name"], "kind": "heading", "obj": str(text), "title": None})
+    return _orig_st_subheader(text, *args, **kwargs)
+
+
+st.dataframe = _recorded_dataframe
+st.plotly_chart = _recorded_plotly_chart
+st.subheader = _recorded_subheader
 
 total_cuentas = len(base)
 total_saldo = base[r_saldo].sum() if r_saldo else 0
@@ -367,6 +401,7 @@ def vicidial_contacto_mask(df):
 
 # --- Plan de Trabajo (resumen ejecutivo / metodología) ---------------------
 with tabs[0]:
+    _set_report_section(TAB_LABELS[0])
     st.subheader("Plan de Trabajo de Cobranza — Diagnóstico Basado en Datos")
     st.markdown(
         """
@@ -489,6 +524,7 @@ está disponible en las pestañas siguientes, y la línea base exportable en
 
 # --- Dashboard Ejecutivo ---------------------------------------------------
 with tabs[1]:
+    _set_report_section(TAB_LABELS[1])
     st.subheader("Resumen Ejecutivo")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Cuentas asignadas", f"{total_cuentas:,}")
@@ -537,6 +573,7 @@ with tabs[1]:
 
 # --- Asignado --------------------------------------------------------
 with tabs[2]:
+    _set_report_section(TAB_LABELS[2])
     st.subheader("Asignado General de Cartera")
     c1, c2, c3 = st.columns(3)
     c1.metric("Número de cuentas", f"{total_cuentas:,}")
@@ -622,6 +659,7 @@ with tabs[2]:
 
 # --- Recuperación --------------------------------------------------------
 with tabs[3]:
+    _set_report_section(TAB_LABELS[3])
     st.subheader("Análisis de Recuperación")
     c1, c2 = st.columns(2)
     c1.metric("Recuperación total", f"${total_recuperado:,.0f}")
@@ -673,6 +711,7 @@ with tabs[3]:
 
 # --- Gestión Telefónica (Vicidial) --------------------------------------
 with tabs[4]:
+    _set_report_section(TAB_LABELS[4])
     st.subheader("Análisis de Gestión Telefónica (Vicidial)")
     if vicidial is None:
         st.info("Sube la base Vicidial para ver este análisis.")
@@ -776,6 +815,7 @@ with tabs[4]:
 
 # --- Gestión Automática (Reminder) --------------------------------------
 with tabs[5]:
+    _set_report_section(TAB_LABELS[5])
     st.subheader("Análisis de Gestión Automática (Reminder / IVR)")
     if reminder is None:
         st.info("Sube la base Reminder/IVR para ver este análisis.")
@@ -811,6 +851,7 @@ with tabs[5]:
 
 # --- Oportunidades --------------------------------------------------------
 with tabs[6]:
+    _set_report_section(TAB_LABELS[6])
     st.subheader("Identificación de Oportunidades")
 
     def lowest_recovery(col):
@@ -873,6 +914,7 @@ with tabs[6]:
 
 # --- Efectividad por Canal -----------------------------------------------
 with tabs[7]:
+    _set_report_section(TAB_LABELS[7])
     st.subheader("Efectividad por Canal (Llamadas, SMS, Reminder)")
 
     canal_rows = []
@@ -968,6 +1010,7 @@ with tabs[7]:
 
 # --- Línea base / Exportar -----------------------------------------------
 with tabs[8]:
+    _set_report_section(TAB_LABELS[8])
     st.subheader("Línea Base de Indicadores")
     st.caption("Indicadores a comparar durante las próximas 4 semanas del plan de acción.")
     resumen = {
@@ -1007,4 +1050,71 @@ with tabs[8]:
         base.to_csv(index=False).encode("utf-8"),
         file_name="cartera_diagnostico.csv",
         mime="text/csv",
+    )
+
+    st.markdown("---")
+    st.subheader("Reporte completo del dashboard")
+    st.caption(
+        "Genera un documento HTML con todas las tablas y gráficas de cada pestaña, "
+        "listo para enviar por correo o abrir en cualquier navegador."
+    )
+
+    def _build_full_html_report():
+        body_parts = []
+        current_section = None
+        plotlyjs_included = False
+        for item in REPORT_SECTIONS:
+            if item["section"] != current_section:
+                if current_section is not None:
+                    body_parts.append("</section>")
+                current_section = item["section"]
+                body_parts.append(f'<section><h2>{current_section}</h2>')
+            if item["kind"] == "heading":
+                body_parts.append(f"<h3>{item['obj']}</h3>")
+            elif item["kind"] == "table":
+                df_html = item["obj"].to_html(index=False, classes="report-table", border=0, na_rep="—")
+                body_parts.append(df_html)
+            elif item["kind"] == "chart":
+                include_js = "cdn" if not plotlyjs_included else False
+                plotlyjs_included = True
+                body_parts.append(item["obj"].to_html(full_html=False, include_plotlyjs=include_js))
+        if current_section is not None:
+            body_parts.append("</section>")
+
+        fecha_reporte = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
+        return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Resultado de Gestión — Natura Cosméticos</title>
+<style>
+    body {{ font-family: 'Georgia', serif; background-color: #FFFFFF; color: {NATURA_BROWN}; margin: 0; padding: 0 32px 48px; }}
+    header {{ background-color: {NATURA_GREEN_DARK}; color: #FFFFFF; padding: 32px; margin: 0 -32px 32px; }}
+    header h1 {{ margin: 0; font-size: 28px; }}
+    header p {{ margin: 8px 0 0; color: {NATURA_GOLD}; }}
+    section {{ margin-bottom: 40px; }}
+    h2 {{ color: {NATURA_GREEN_DARK}; border-bottom: 2px solid {NATURA_GOLD}; padding-bottom: 6px; }}
+    h3 {{ color: {NATURA_TERRACOTA}; }}
+    table.report-table {{ border-collapse: collapse; width: 100%; margin: 16px 0 28px; font-family: Arial, sans-serif; font-size: 14px; }}
+    table.report-table th {{ background-color: {NATURA_GREEN_DARK}; color: #FFFFFF; text-align: left; padding: 8px 12px; }}
+    table.report-table td {{ padding: 6px 12px; border-bottom: 1px solid #E0DCCB; }}
+    table.report-table tr:nth-child(even) {{ background-color: {NATURA_CREAM}; }}
+    footer {{ color: {NATURA_BROWN}; opacity: 0.7; font-size: 12px; margin-top: 48px; }}
+</style>
+</head>
+<body>
+<header>
+    <h1>Resultado de Gestión</h1>
+    <p>Natura Cosméticos · Plan de acción de cobranza · Generado el {fecha_reporte}</p>
+</header>
+{''.join(body_parts)}
+<footer>Reporte generado automáticamente desde el dashboard de Resultado de Gestión.</footer>
+</body>
+</html>"""
+
+    st.download_button(
+        "Descargar reporte completo (HTML)",
+        _build_full_html_report().encode("utf-8"),
+        file_name="resultado_de_gestion_reporte.html",
+        mime="text/html",
     )
