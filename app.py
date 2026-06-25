@@ -1106,7 +1106,16 @@ with tabs[8]:
             if item["kind"] == "heading":
                 body_parts.append(f"<h3>{item['obj']}</h3>")
             elif item["kind"] == "table":
-                df_html = item["obj"].to_html(index=False, classes="report-table", border=0, na_rep="—")
+                df_out = item["obj"].rename(columns=DISPLAY_NAMES).copy()
+                for col in df_out.columns:
+                    col_lower = col.lower()
+                    if col_lower in ("% de cuentas", "% saldo", "% recuperación") or col_lower.startswith("% ") or "%" in col:
+                        df_out[col] = df_out[col].apply(lambda v: f"{v:.2f}%" if pd.notna(v) else "—")
+                    elif col_lower in ("número de cuentas",) or ("cuentas" in col_lower and "%" not in col_lower):
+                        df_out[col] = df_out[col].apply(lambda v: f"{int(v):,}" if pd.notna(v) else "—")
+                    elif any(k in col_lower for k in ("saldo", "monto", "recuperado")):
+                        df_out[col] = df_out[col].apply(lambda v: f"{v:,.2f}" if pd.notna(v) else "—")
+                df_html = df_out.to_html(index=False, classes="report-table", border=0, na_rep="—")
                 body_parts.append(df_html)
             elif item["kind"] == "chart":
                 include_js = "cdn" if not plotlyjs_included else False
