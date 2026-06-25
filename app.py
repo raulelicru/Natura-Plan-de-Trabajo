@@ -719,19 +719,26 @@ with tabs[3]:
 
             g_chart = g_show.copy()
             g_chart[col] = g_chart[col].astype(str)
+            _max_pct = g_chart["pct_recuperacion"].max() or 1
             fig_pct = px.bar(
                 g_chart,
                 x="pct_recuperacion",
                 y=col,
                 orientation="h",
                 color="pct_recuperacion",
-                color_continuous_scale=NATURA_SCALE,
+                color_continuous_scale=["#8FC93A", "#3E8E4F", "#0B5D3B"],
+                range_color=[0, _max_pct],
                 text="pct_recuperacion",
                 title=f"% de recuperación — {label}",
                 category_orders={col: g_chart[col].tolist()},
             )
-            fig_pct.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
+            fig_pct.update_traces(
+                texttemplate="%{text:.2f}%",
+                textposition="outside",
+                marker_line_width=0,
+            )
             fig_pct.update_yaxes(type="category", tickfont_size=14)
+            fig_pct.update_xaxes(ticksuffix="%")
             fig_pct.update_layout(
                 yaxis_title="",
                 xaxis_title="% Recuperación",
