@@ -719,22 +719,19 @@ with tabs[3]:
 
             g_chart = g_show.copy()
             g_chart[col] = g_chart[col].astype(str)
-            _max_pct = g_chart["pct_recuperacion"].max() or 1
             fig_pct = px.bar(
                 g_chart,
                 x="pct_recuperacion",
                 y=col,
                 orientation="h",
-                color="pct_recuperacion",
-                color_continuous_scale=["#8FC93A", "#3E8E4F", "#0B5D3B"],
-                range_color=[0, _max_pct],
                 text="pct_recuperacion",
                 title=f"% de recuperación — {label}",
                 category_orders={col: g_chart[col].tolist()},
             )
             fig_pct.update_traces(
-                texttemplate="%{text:.2f}%",
+                texttemplate="%{x:.2f}%",
                 textposition="outside",
+                marker_color=NATURA_GREEN,
                 marker_line_width=0,
             )
             fig_pct.update_yaxes(type="category", tickfont_size=14)
@@ -742,10 +739,9 @@ with tabs[3]:
             fig_pct.update_layout(
                 yaxis_title="",
                 xaxis_title="% Recuperación",
-                coloraxis_showscale=False,
                 height=max(380, 60 * g_chart[col].nunique()),
                 font=dict(size=13),
-                margin=dict(l=10, r=10, t=60, b=10),
+                margin=dict(l=10, r=80, t=60, b=10),
             )
             st.plotly_chart(fig_pct, use_container_width=True)
             st.caption("La gráfica de saldo asignado está en la pestaña **Asignado de Cartera**.")
