@@ -701,7 +701,7 @@ with tabs[3]:
 
     for label, col in [
         ("Recuperación por temporalidad", r_aging),
-        ("Recuperación por estado", r_estado),
+        ("Recuperación por estado de residencia", r_estado_residencia),
         ("Recuperación por camino de crecimiento", r_camino),
         ("Recuperación por segmentación rep", r_segmento),
     ]:
@@ -713,36 +713,66 @@ with tabs[3]:
             g["pct_recuperacion"] = pct(g["monto_recuperado"], g["saldo_asignado"])
             st.markdown(f"**{label}**")
             g_show = g.sort_values("pct_recuperacion", ascending=False)
-            if col in (r_estado, r_estado_residencia):
-                g_show = g_show.head(10)
             st.dataframe(reorder_table(g_show, col), use_container_width=True, column_config=table_config(g_show))
 
             g_chart = g_show.copy()
             g_chart[col] = g_chart[col].astype(str)
-            fig_pct = px.bar(
-                g_chart,
-                x="pct_recuperacion",
-                y=col,
-                orientation="h",
-                text="pct_recuperacion",
-                title=f"% de recuperación — {label}",
-                category_orders={col: g_chart[col].tolist()},
-            )
-            fig_pct.update_traces(
-                texttemplate="%{x:.2f}%",
-                textposition="outside",
-                marker_color=NATURA_GREEN,
-                marker_line_width=0,
-            )
-            fig_pct.update_yaxes(type="category", tickfont_size=14)
-            fig_pct.update_xaxes(ticksuffix="%")
-            fig_pct.update_layout(
-                yaxis_title="",
-                xaxis_title="% Recuperación",
-                height=max(380, 60 * g_chart[col].nunique()),
-                font=dict(size=13),
-                margin=dict(l=10, r=80, t=60, b=10),
-            )
+
+            is_estado = col == r_estado_residencia
+            if is_estado:
+                # Gráfica vertical: X = estado, Y = % recuperación
+                fig_pct = px.bar(
+                    g_chart,
+                    x=col,
+                    y="pct_recuperacion",
+                    text="pct_recuperacion",
+                    title=f"% de recuperación por entidad federativa",
+                    category_orders={col: g_chart[col].tolist()},
+                )
+                fig_pct.update_traces(
+                    texttemplate="%{y:.2f}%",
+                    textposition="outside",
+                    marker_color=NATURA_GREEN,
+                    marker_line_width=0,
+                )
+                fig_pct.update_xaxes(
+                    type="category",
+                    tickangle=-45,
+                    tickfont_size=12,
+                    title_text="Estado de residencia",
+                )
+                fig_pct.update_yaxes(ticksuffix="%", title_text="% Recuperación")
+                fig_pct.update_layout(
+                    height=520,
+                    font=dict(size=13),
+                    margin=dict(l=10, r=20, t=60, b=140),
+                )
+            else:
+                # Gráfica horizontal para el resto
+                fig_pct = px.bar(
+                    g_chart,
+                    x="pct_recuperacion",
+                    y=col,
+                    orientation="h",
+                    text="pct_recuperacion",
+                    title=f"% de recuperación — {label}",
+                    category_orders={col: g_chart[col].tolist()},
+                )
+                fig_pct.update_traces(
+                    texttemplate="%{x:.2f}%",
+                    textposition="outside",
+                    marker_color=NATURA_GREEN,
+                    marker_line_width=0,
+                )
+                fig_pct.update_yaxes(type="category", tickfont_size=14)
+                fig_pct.update_xaxes(ticksuffix="%")
+                fig_pct.update_layout(
+                    yaxis_title="",
+                    xaxis_title="% Recuperación",
+                    height=max(380, 60 * g_chart[col].nunique()),
+                    font=dict(size=13),
+                    margin=dict(l=10, r=80, t=60, b=10),
+                )
             st.plotly_chart(fig_pct, use_container_width=True)
             st.caption("La gráfica de saldo asignado está en la pestaña **Asignado de Cartera**.")
 
