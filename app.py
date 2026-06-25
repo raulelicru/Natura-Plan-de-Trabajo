@@ -346,10 +346,27 @@ def dist_table(df, col, value_col=None):
 
 MONEY_KEYWORDS = ("saldo", "monto", "recuperado")
 
+DISPLAY_NAMES = {
+    "aging_de_morosidad": "Tramo de Morosidad",
+    "cuentas": "Número de Cuentas",
+    "pct_cuentas": "% de Cuentas",
+    "saldo": "Saldo",
+    "pct_saldo": "% Saldo",
+    "pct_recuperacion": "% Recuperación",
+    "monto_recuperado": "Monto Recuperado",
+    "saldo_asignado": "Saldo Asignado",
+    "llamadas": "Llamadas",
+    "contactos": "Contactos",
+}
+
+
+def _label(col):
+    return DISPLAY_NAMES.get(col, col.replace("_", " ").title())
+
 
 def money_config(df):
     return {
-        c: st.column_config.NumberColumn(format="%,.2f")
+        c: st.column_config.NumberColumn(label=_label(c), format="%,.2f")
         for c in df.columns
         if any(k in c.lower() for k in MONEY_KEYWORDS)
     }
@@ -360,7 +377,24 @@ def is_pct_col(c):
 
 
 def pct_config(df):
-    return {c: st.column_config.NumberColumn(format="%.4f%%") for c in df.columns if is_pct_col(c)}
+    return {c: st.column_config.NumberColumn(label=_label(c), format="%.2f%%") for c in df.columns if is_pct_col(c)}
+
+
+def cuentas_config(df):
+    return {
+        c: st.column_config.NumberColumn(label=_label(c), format="%,d")
+        for c in df.columns
+        if c.lower() in ("cuentas", "número de cuentas") or (c.lower().startswith("tem") and "cuentas" in c.lower())
+    }
+
+
+def table_config(df):
+    rename_cfg = {
+        c: st.column_config.Column(label=_label(c))
+        for c in df.columns
+        if c in DISPLAY_NAMES and c not in {**money_config(df), **pct_config(df), **cuentas_config(df)}
+    }
+    return {**rename_cfg, **money_config(df), **pct_config(df), **cuentas_config(df)}
 
 
 def table_config(df):
